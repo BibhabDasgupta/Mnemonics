@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Banking App Design System - Professional & Trustworthy */
+
+@layer base {
+  :root {
+    /* Banking Brand Colors */
+    --background: 210 20% 98%;
+    --foreground: 210 30% 8%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 210 30% 8%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 30% 8%;
+
+    /* Primary - Professional Blue */
+    --primary: 213 94% 68%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 213 94% 78%;
+
+    /* Secondary - Trustworthy Teal */
+    --secondary: 183 100% 32%;
+    --secondary-foreground: 0 0% 100%;
+
+    /* Muted - Subtle Gray */
+    --muted: 210 40% 96%;
+    --muted-foreground: 210 10% 40%;
+
+    /* Accent - Success Green */
+    --accent: 142 76% 36%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 40% 90%;
+    --input: 210 40% 95%;
+    --ring: 213 94% 68%;
+
+    --radius: 0.75rem;
+
+    /* Banking Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(213 94% 68%), hsl(183 100% 32%));
+    --gradient-surface: linear-gradient(180deg, hsl(210 20% 98%), hsl(210 40% 96%));
+    --gradient-glow: linear-gradient(135deg, hsl(213 94% 78% / 0.3), hsl(183 100% 42% / 0.3));
+
+    /* Banking Shadows */
+    --shadow-soft: 0 4px 20px hsl(213 94% 68% / 0.15);
+    --shadow-glow: 0 0 40px hsl(213 94% 78% / 0.4);
+    --shadow-card: 0 8px 32px hsl(210 30% 8% / 0.08);
+
+    /* Banking Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-spring: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .dark {
+    --background: 210 30% 8%;
+    --foreground: 210 20% 98%;
+
+    --card: 210 25% 12%;
+    --card-foreground: 210 20% 98%;
+
+    --popover: 210 25% 12%;
+    --popover-foreground: 210 20% 98%;
+
+    --primary: 213 94% 68%;
+    --primary-foreground: 210 30% 8%;
+
+    --secondary: 183 100% 32%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 210 25% 15%;
+    --muted-foreground: 210 10% 60%;
+
+    --accent: 142 76% 36%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 25% 18%;
+    --input: 210 25% 15%;
+    --ring: 213 94% 68%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(213 94% 68%), hsl(183 100% 32%));
+    --gradient-surface: linear-gradient(180deg, hsl(210 30% 8%), hsl(210 25% 12%));
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}

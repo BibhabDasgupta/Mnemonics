@@ -1,0 +1,503 @@
+--- File: .gitignore ---
+.env
+app/api/api_v1/endpoints/__pycache__
+app/db/__pycache__
+app/services/__pycache__
+app/schemas/__pycache__
+app/db/models/__pycache__
+app/core/__pycache__
+export_git_files.py 
+git_files_export.txt
+
+--- File: Dockerfile ---
+
+
+--- File: app/api/api_v1/endpoints/auth.py ---
+from fastapi import APIRouter, Depends, HTTPException, Body
+from sqlalchemy.orm import Session
+from fido2.utils import websafe_encode
+from fido2 import cbor
+from fido2.cose import CoseKey
+
+from app.db.base import get_db
+from app.schemas import user as customer_schema, passkey as passkey_schema
+from app.services import user_service as customer_service
+
+router = APIRouter()
+
+def encode_bytes_to_websafe_base64(data):
+    """
+    Recursively traverses a data structure and encodes all bytes values
+    to websafe base64 strings, making it JSON serializable.
+    """
+    if isinstance(data, bytes):
+        return websafe_encode(data)
+    if isinstance(data, list): 
+        return [encode_bytes_to_websafe_base64(item) for item in data] 
+    if isinstance(data, dict): 
+        return {key: encode_bytes_to_websafe_base64(value) for key, value in data.items()} 
+    return data
+
+@router.post("/register/begin", summary="Begin customer and passkey registration")
+def register_begin(request: customer_schema.CustomerCreate, db: Session = Depends(get_db)):
+    # Check for existing customer by unique identifiers
+    if customer_service.get_customer_by_id(db, customer_id=request.customer_id):
+        raise HTTPException(status_code=409, detail="Customer with this ID already exists.")
+    if customer_service.get_customer_by_email(db, email=request.email):
+        raise HTTPException(status_code=409, detail="Customer with this email already exists.")
+    if customer_service.get_customer_by_aadhaar(db, aadhaar=request.aadhaar_number):
+        raise HTTPException(status_code=409, detail="Customer with this Aadhaar number already exists.")
+
+    # Create the new customer
+    customer = customer_service.create_customer(db, customer_in=request)
+
+    registration_data, state = fido_server.register_begin(
+        {"id": customer.customer_id.encode(), "name": customer.email, "displayName": customer.name},
+        user_verification="required",
+        authenticator_attachment="platform", 
+    )
+    # Use the unique customer_id as the key for the challenge
+    challenge_store[customer.customer_id] = state
+    
+    registration_data_dict = dict(registration_data)
+    return encode_bytes_to_websafe_base64(registration_data_dict)
+
+@router.post("/register/complete", summary="Complete passkey registration")
+def register_complete(
+    customer_id: str = Body(..., embed=True),
+    data: passkey_schema.WebAuthnRegistrationResponse = Body(...),
+    db: Session = Depends(get_db)
+):
+    customer = customer_service.get_customer_by_id(db, customer_id=customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    state = challenge_store.pop(customer.customer_id, None)
+    if not state:
+        raise HTTPException(status_code=400, detail="No active challenge for this customer.") 
+
+    try:
+        auth_data = fido_server.register_complete(state, response=data.dict())
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Registration failed: {e}")
+
+    customer_service.add_passkey_to_customer(
+        db=db,
+        customer=customer,
+        credential_id=auth_data.credential_data.credential_id, 
+        public_key=cbor.encode(auth_data.credential_data.public_key), 
+        sign_count=auth_data.counter 
+    )
+    return {"status": "ok", "message": "Registration successful"}
+
+@router.post("/login/begin", summary="Begin passkey login")
+def login_begin(request: passkey_schema.WebAuthnLoginRequest, db: Session = Depends(get_db)):
+    customer = customer_service.get_customer_by_id(db, customer_id=request.customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not registered")
+
+    passkeys = customer_service.get_customer_passkeys(db, customer=customer)
+    if not passkeys:
+        raise HTTPException(status_code=404, detail="No passkeys registered for this customer")
+
+    credentials = [{"type": "public-key", "id": pk.credential_id} for pk in passkeys] 
+    auth_data, state = fido_server.authenticate_begin(credentials)
+    
+    challenge_store[customer.customer_id] = state
+
+    auth_data_dict = dict(auth_data)
+    return encode_bytes_to_websafe_base64(auth_data_dict)
+
+@router.post("/login/complete", summary="Complete passkey login")
+def login_complete(
+    customer_id: str = Body(..., embed=True),
+    data: passkey_schema.WebAuthnAuthenticationResponse = Body(...),
+    db: Session = Depends(get_db)
+):
+    customer = customer_service.get_customer_by_id(db, customer_id=customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    state = challenge_store.pop(customer.customer_id, None)
+    if not state:
+        raise HTTPException(status_code=400, detail="No active challenge for customer")
+
+    passkeys = customer_service.get_customer_passkeys(db, customer=customer)
+    
+    credentials_for_verification = []
+    for pk in passkeys:
+        public_key_cose = CoseKey.parse(cbor.decode(pk.public_key)) 
+        cred_data = type('Cred', (object,), {
+            'credential_id': pk.credential_id, 
+            'public_key': public_key_cose, 
+            'sign_count': pk.sign_count 
+        })
+        credentials_for_verification.append(cred_data)
+
+    try:
+        auth_result = fido_server.authenticate_complete(
+            state,
+            credentials=credentials_for_verification,
+            response=data.dict() 
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Authentication failed: {e}")
+
+    customer_service.update_passkey_sign_count(db, auth_result.credential_id, auth_result.sign_count)
+    return {"status": "ok", "message": "Login successful"}
+
+--- File: app/core/config.py ---
+from pydantic import AnyHttpUrl, PostgresDsn
+from pydantic_settings import BaseSettings
+from typing import List
+
+class Settings(BaseSettings):
+    # Core Project Settings
+    PROJECT_NAME: str
+    API_V1_STR: str = "/api/v1"
+
+    # CORS Origins - Read as a simple string to avoid parsing errors.
+    # The parsing is now handled in main.py where the middleware is configured.
+    BACKEND_CORS_ORIGINS: str
+
+    # Database URL
+    DATABASE_URL: PostgresDsn
+
+    # FIDO2 Relying Party (RP) Configuration
+    RP_ID: str
+    RP_NAME: str
+    ORIGIN: AnyHttpUrl
+
+    class Config:
+        # This tells Pydantic to load variables from a .env file.
+        # It will raise an error if a required variable is not set.
+        env_file = ".env"
+        env_file_encoding = 'utf-8'
+
+settings = Settings()
+
+--- File: app/core/security.py ---
+# --- File: app/core/security.py ---
+
+import hashlib
+from ecdsa import VerifyingKey, BadSignatureError
+from ecdsa.curves import SECP256k1
+from ecdsa.util import sigdecode_string
+
+def verify_signature(public_key_hex: str, signature_hex: str, message: str) -> bool:
+    """
+    Verifies a compact ECDSA signature, specifically for the seed key challenge.
+    """
+    try:
+        public_key_bytes = bytes.fromhex(public_key_hex)
+        signature_bytes = bytes.fromhex(signature_hex)
+        message_hash = hashlib.sha256(message.encode('utf-8')).digest()
+        vk = VerifyingKey.from_string(public_key_bytes, curve=SECP256k1, hashfunc=hashlib.sha256)
+        return vk.verify(signature_bytes, message_hash, sigdecode=sigdecode_string)
+    except Exception:
+        return False
+
+--- File: app/db/base.py ---
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+from app.core.config import settings
+
+engine = create_engine(str(settings.DATABASE_URL), pool_pre_ping=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# Dependency to get a DB session in API endpoints
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+--- File: app/db/models/__init__.py ---
+
+
+--- File: app/db/models/user.py ---
+from sqlalchemy import (Column, Integer, String, LargeBinary, ForeignKey, DateTime,
+                        Date, Boolean, Numeric)
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+from sqlalchemy.dialects.postgresql import JSONB # Ensuring JSONB is imported
+from app.db.base import Base
+
+class Customer(Base):
+    __tablename__ = "customers"
+
+    customer_id = Column(String, primary_key=True, index=True)
+    name = Column(String, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    phone_number = Column(String, unique=True, index=True, nullable=True)
+    address = Column(String, nullable=True)
+    aadhaar_number = Column(String, unique=True, index=True, nullable=False)
+    date_of_birth = Column(Date, nullable=True)
+    is_registered_in_app = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # --- CORRECTED: Restoring the JSONB fields as requested ---
+    last_sim_data = Column(JSONB, nullable=True)
+    last_phone_data = Column(JSONB, nullable=True)
+    # ------------------------------------------------------------
+
+    # Relationships
+    passkeys = relationship("Passkey", back_populates="customer", cascade="all, delete-orphan")
+    seedkey = relationship("Seedkey", back_populates="customer", uselist=False, cascade="all, delete-orphan")
+    accounts = relationship("Account", back_populates="customer", cascade="all, delete-orphan")
+
+class Account(Base):
+    __tablename__ = "accounts"
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(String, ForeignKey("customers.customer_id"), nullable=False)
+    account_number = Column(String, unique=True, nullable=False)
+    account_type = Column(String, nullable=False, default="Savings")
+    balance = Column(Numeric(10, 2), nullable=False, default=0.00)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    customer = relationship("Customer", back_populates="accounts")
+    transactions = relationship("Transaction", back_populates="account", cascade="all, delete-orphan")
+
+class Transaction(Base):
+    __tablename__ = "transactions"
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
+    date = Column(DateTime(timezone=True), server_default=func.now())
+    description = Column(String, nullable=False)
+    amount = Column(Numeric(10, 2), nullable=False)
+    type = Column(String, nullable=False) # 'credit' or 'debit'
+
+    account = relationship("Account", back_populates="transactions")
+
+class Passkey(Base):
+    __tablename__ = "passkeys"
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(String, ForeignKey("customers.customer_id"), nullable=False)
+    credential_id = Column(LargeBinary, unique=True, nullable=False)
+    public_key = Column(LargeBinary, nullable=False)
+    sign_count = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    customer = relationship("Customer", back_populates="passkeys")
+
+class Seedkey(Base):
+    __tablename__ = "seedkeys"
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(String, ForeignKey("customers.customer_id"), nullable=False, unique=True)
+    public_key = Column(String, nullable=False, unique=True)
+    is_revoked = Column(Boolean, default=False, nullable=False)
+    last_loggedInIP = Column(String, nullable=True)
+    last_loggedInLocation = Column(String, nullable=True)
+    last_loggedInTime = Column(DateTime(timezone=True), nullable=True)
+    no_of_logged_in_devices = Column(Integer, default=0, nullable=False)
+
+    customer = relationship("Customer", back_populates="seedkey")
+
+--- File: app/schemas/__init__.py ---
+
+
+--- File: app/schemas/passkey.py ---
+from pydantic import BaseModel
+from typing import Dict, Any
+from datetime import datetime
+
+class PasskeyInDB(BaseModel):
+    id: int
+    credential_id: bytes
+    sign_count: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# This schema is now specifically for the login begin request
+class WebAuthnLoginRequest(BaseModel):
+    customer_id: str
+
+class WebAuthnRegistrationResponse(BaseModel):
+    id: str
+    rawId: str
+    response: Dict[str, Any] 
+    type: str
+
+class WebAuthnAuthenticationResponse(WebAuthnRegistrationResponse):
+    pass
+
+--- File: app/schemas/user.py ---
+# --- File: app/schemas/user.py ---
+
+from pydantic import BaseModel, EmailStr
+from typing import List, Dict, Any, Optional
+from datetime import datetime, date
+from .passkey import PasskeyInDB
+from .seedkey import Seedkey
+
+class CustomerBase(BaseModel):
+    email: EmailStr
+    name: str
+    address: str
+    aadhaar_number: str
+    customer_id: str
+    phone_number: Optional[str] = None
+    date_of_birth: Optional[date] = None
+
+class CustomerCreate(CustomerBase):
+    # These fields are optional during creation
+    last_sim_data: Optional[Dict[str, Any]] = None
+    last_phone_data: Optional[Dict[str, Any]] = None
+
+class CustomerInDB(CustomerBase):
+    is_registered_in_app: bool
+    created_at: datetime
+    passkeys: List[PasskeyInDB] = []
+    seedkey: Optional[Seedkey] = None
+
+    class Config:
+        from_attributes = True
+
+# A simpler schema for responses
+class Customer(CustomerBase):
+    is_registered_in_app: bool
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class SeedkeyRegistrationRequest(BaseModel):
+    customer: CustomerCreate
+    public_key: str
+
+--- File: app/services/__init__.py ---
+
+
+--- File: app/services/user_service.py ---
+from sqlalchemy.orm import Session
+from app.db.models.user import Customer, Passkey, Seedkey
+from app.schemas.user import CustomerCreate
+from app.services import seedkey_service
+
+def get_customer_by_id(db: Session, customer_id: str) -> Customer | None:
+    return db.query(Customer).filter(Customer.customer_id == customer_id).first()
+
+def get_customer_by_email(db: Session, email: str) -> Customer | None:
+    return db.query(Customer).filter(Customer.email == email).first()
+
+def get_customer_by_aadhaar(db: Session, aadhaar: str) -> Customer | None:
+    return db.query(Customer).filter(Customer.aadhaar_number == aadhaar).first()
+
+def create_customer(db: Session, customer_in: CustomerCreate) -> Customer:
+    db_customer = Customer(**customer_in.dict())
+    db.add(db_customer)
+    db.commit()
+    db.refresh(db_customer)
+    return db_customer
+    
+def create_customer_with_seedkey(db: Session, customer_in: CustomerCreate, public_key: str) -> Customer:
+    # Create the customer first
+    db_customer = Customer(**customer_in.dict(), is_registered_in_app=True)
+    db.add(db_customer)
+    db.flush()  # Use flush to assign a customer_id without committing the transaction
+
+    # Create the seedkey
+    seedkey_service.create_seedkey_for_customer(
+        db=db, customer_id=db_customer.customer_id, public_key=public_key
+    )
+
+    db.commit()
+    db.refresh(db_customer)
+    return db_customer
+
+def add_passkey_to_customer(db: Session, customer: Customer, credential_id: bytes, public_key: bytes, sign_count: int) -> Passkey:
+    db_passkey = Passkey(
+        customer_id=customer.customer_id,
+        credential_id=credential_id,
+        public_key=public_key,
+        sign_count=sign_count
+    )
+    db.add(db_passkey)
+    # Also update the customer's registration status
+    customer.is_registered_in_app = True
+    db.commit()
+    db.refresh(db_passkey)
+    return db_passkey
+
+# New function to get a specific passkey
+def get_passkey_by_credential_id(db: Session, credential_id: bytes) -> Passkey | None:
+    return db.query(Passkey).filter(Passkey.credential_id == credential_id).first()
+
+def get_customer_passkeys(db: Session, customer: Customer) -> list[Passkey]:
+    return db.query(Passkey).filter(Passkey.customer_id == customer.customer_id).all()
+
+def update_passkey_sign_count(db: Session, credential_id: bytes, new_count: int) -> Passkey | None:
+    passkey = db.query(Passkey).filter(Passkey.credential_id == credential_id).first()
+    if passkey:
+        passkey.sign_count = new_count
+        db.commit()
+        db.refresh(passkey)
+    return passkey
+
+--- File: docker-compose.yml ---
+
+
+--- File: main.py ---
+from fastapi import FastAPI 
+from fastapi.middleware.cors import CORSMiddleware 
+from app.api.api_v1.endpoints import auth, seedkey_auth, fido_auth,accounts,user_info
+from app.core.config import settings
+from app.db.base import Base, engine
+import uvicorn
+
+# Import your new SQLAlchemy models here BEFORE calling create_all
+# This allows the Base metadata to be populated with your table definitions
+from app.db.models.user import Customer, Passkey, Seedkey
+
+# This will now correctly create the database tables if they don't exist.
+Base.metadata.create_all(bind=engine) 
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+)
+
+# Configure CORS to allow the frontend to communicate with the backend
+if settings.BACKEND_CORS_ORIGINS:
+    origins = [origin.strip() for origin in settings.BACKEND_CORS_ORIGINS.split(",")]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+# Include all the authentication routers
+app.include_router(auth.router, prefix=settings.API_V1_STR, tags=["Passkey Authentication"])
+app.include_router(seedkey_auth.router, prefix=settings.API_V1_STR, tags=["Seedkey Authentication"])
+app.include_router(fido_auth.router, prefix=settings.API_V1_STR, tags=["FIDO2 Authentication"])
+app.include_router(accounts.router, prefix=settings.API_V1_STR, tags=["Bank Accounts"])
+# --- ADD THE NEW ROUTER ---
+app.include_router(user_info.router, prefix=settings.API_V1_STR, tags=["User Information"])
+# --------------------------
+
+@app.get("/", summary="Root endpoint to check API status")
+def read_root():
+    return {"status": f"Welcome to {settings.PROJECT_NAME}"}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+--- File: requirements.txt ---
+fastapi
+uvicorn[standard]
+sqlalchemy
+psycopg2-binary
+python-dotenv
+pydantic-settings
+fido2
+python-jose[cryptography]
+alembic
+

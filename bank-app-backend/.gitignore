@@ -1,0 +1,10 @@
+.env
+app/api/api_v1/endpoints/__pycache__
+app/db/__pycache__
+app/services/__pycache__
+app/schemas/__pycache__
+app/db/models/__pycache__
+app/core/__pycache__
+export_git_files.py 
+git_files_export.txt
+venv
