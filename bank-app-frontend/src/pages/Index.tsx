@@ -6,6 +6,7 @@ import RegistrationDetails from "@/components/RegistrationDetails";
 import RestorationDetails from "@/components/RestorationDetails";
 import DeviceVerification from "@/components/DeviceVerification";
 import Dashboard from "@/components/Dashboard";
+import SignatureRegistration from "@/components/SignatureRegistration";
 import Login from "@/components/Login";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -23,6 +24,7 @@ type AppState =
   | 'dashboard'
   | 'revoked'
   | 'already-registered'
+  | 'signature-registration'
   | 'device-verification';
 
 const Index = () => {
@@ -113,10 +115,16 @@ const Index = () => {
     setError('');
   };
 
-   const handleDeviceVerificationComplete = () => {
+   const handleSignatureRegistrationComplete = () => {
     setCurrentState('login');
     setError('');
   };
+
+   const handleDeviceVerificationComplete = () => {
+    setCurrentState('signature-registration');
+    setError('');
+  };
+
 
   const handleLoginComplete = () => {
     setCurrentState('dashboard');
@@ -130,7 +138,7 @@ const Index = () => {
     setError('');
   };
 
-  const handleBack = () => {
+ const handleBack = () => {
     if (currentState === 'registration-phone' || currentState === 'restoration-phone' || currentState === 'login' || currentState === 'revoked' || currentState === 'already-registered') {
       setCurrentState('landing');
     } else if (currentState === 'registration-otp') {
@@ -139,6 +147,10 @@ const Index = () => {
       setCurrentState('registration-otp');
     } else if (currentState === 'restoration-details') {
       setCurrentState('restoration-phone');
+    } else if (currentState === 'device-verification') {
+      setCurrentState('registration-details');
+    } else if (currentState === 'signature-registration') {
+      setCurrentState('device-verification');
     }
     setError('');
   };
@@ -194,6 +206,17 @@ const Index = () => {
           customerId={customerId}
         />
       );
+
+    case 'signature-registration':
+      return (
+        <SignatureRegistration
+          onBack={handleBack}
+          onProceed={handleSignatureRegistrationComplete}
+          phoneNumber={phoneNumber}
+          customerId={customerId}
+        />
+      );
+
     
     case 'restoration-phone':
       return (

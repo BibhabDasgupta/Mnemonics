@@ -7,7 +7,7 @@ from app.schemas.user import (
     CustomerCreate,
     AppDataCreate
 )
-from app.services import otp_service
+from app.services import (otp_service, signature_service)
 from app.db.models.user import Account, AppData
 from datetime import datetime
 import uuid
@@ -248,6 +248,52 @@ async def device_check(data: dict, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Device check failed: {str(e)}")
+
+
+@router.post("/register/signature")
+async def register_signature(data: dict, db: Session = Depends(get_db)):
+    try:
+        if not data or 'phoneNumber' not in data or 'customerId' not in data or 'signature' not in data:
+            raise HTTPException(status_code=400, detail="Missing phoneNumber, customerId, or signature")
+        
+        try:
+            phone_number = otp_service.decrypt_data(data['phoneNumber'])
+            customer_id = otp_service.decrypt_data(data['customerId'])
+            signature_data = data['signature']  # Signature is sent unencrypted
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=f"Decryption failed: {str(e)}")
+        
+        # Preprocess and extract features using signature_service
+        img = signature_service.preprocess_signature(signature_data)
+        features = signature_service.extract_all_features(img)
+        
+        # Store unencrypted features in app_data.other_details
+        query = text("""
+            UPDATE app_data
+            SET other_details = :other_details,
+                updated_at = :updated_at
+            WHERE customer_id = :customer_id AND phone_number = :phone_number
+            RETURNING id
+        """)
+        result = db.execute(query, {
+            "customer_id": customer_id,
+            "phone_number": phone_number,
+            "other_details": json.dumps([{"signature": features}]),
+            "updated_at": datetime.utcnow()
+        }).fetchone()
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="App data not found for customer")
+        
+        db.commit()
+        return {"status": "Signature registered successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Signature registration failed: {str(e)}")
+    
 
 
 @router.post("/register/device-complete")
