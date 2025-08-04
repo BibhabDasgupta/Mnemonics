@@ -5,13 +5,12 @@ import { ArrowLeft } from 'lucide-react';
 import { encrypt } from '@/utils/encryption';
 
 interface SignatureRegistrationProps {
-  onBack: () => void;
   onProceed: () => void;
   phoneNumber: string;
   customerId: string | undefined;
 }
 
-const SignatureRegistration = ({ onBack, onProceed, phoneNumber, customerId }: SignatureRegistrationProps) => {
+const SignatureRegistration = ({ onProceed, phoneNumber, customerId }: SignatureRegistrationProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [lastX, setLastX] = useState(0);
@@ -150,9 +149,6 @@ const SignatureRegistration = ({ onBack, onProceed, phoneNumber, customerId }: S
     <div className="min-h-screen bg-gradient-surface flex items-center justify-center p-4">
       <Card className="w-full max-w-md p-8 shadow-card animate-slide-up">
         <div className="flex items-center mb-6">
-          <Button variant="ghost" size="icon" onClick={onBack} className="mr-2">
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
           <h1 className="text-2xl font-bold text-foreground">Register Your Signature</h1>
         </div>
         <p className="text-muted-foreground mb-4">

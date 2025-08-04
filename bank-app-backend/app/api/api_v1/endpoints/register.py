@@ -7,6 +7,8 @@ from app.schemas.user import (
     CustomerCreate,
     AppDataCreate
 )
+from app.services.otp_service import decrypt_phone_number, decrypt_data
+from app.services.fido_seedkey_service import start_fido_registration, register_fido_seedkey
 from app.services import (otp_service, signature_service)
 from app.db.models.user import Account, AppData
 from datetime import datetime
@@ -294,6 +296,59 @@ async def register_signature(data: dict, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Signature registration failed: {str(e)}")
     
+
+
+@router.post("/register/fido-start")
+async def fido_start_registration(data: dict, db: Session = Depends(get_db)):
+    try:
+        if not data or 'customer_id' not in data:
+            raise HTTPException(status_code=400, detail="Missing customer_id")
+        
+        try:
+            customer_id = decrypt_data(data['customer_id'])
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=f"Decryption failed: {str(e)}")
+        
+        return start_fido_registration(db, customer_id)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"FIDO registration start failed: {str(e)}")
+    
+
+@router.post("/register/fido-seedkey")
+async def register_fido_seedkey_route(data: dict, db: Session = Depends(get_db)):
+    try:
+        if not data or 'phoneNumber' not in data or 'customerId' not in data or 'fidoData' not in data or 'seedData' not in data:
+            raise HTTPException(status_code=400, detail="Missing required fields")
+        
+        try:
+            phone_number = decrypt_data(data['phoneNumber'])
+            customer_id = decrypt_data(data['customerId'])
+            fido_data = {
+                "credentialId": decrypt_data(data['fidoData']['credentialId']),
+                "publicKey": decrypt_data(data['fidoData']['publicKey']),
+                "symmetricKey": decrypt_data(data['fidoData']['symmetricKey']),
+                "clientDataJSON": data['fidoData']['clientDataJSON'],
+                "attestationObject": data['fidoData']['attestationObject'],
+            }
+            seed_data = {
+                "userId": decrypt_data(data['seedData']['userId']),
+                "publicKey": decrypt_data(data['seedData']['publicKey']),
+            }
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=f"Decryption failed: {str(e)}")
+        
+        await register_fido_seedkey(db, phone_number, customer_id, fido_data, seed_data)
+        return {"status": "FIDO2 and seed key registered successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"FIDO2 and seed key registration failed: {str(e)}")
+
 
 
 @router.post("/register/device-complete")

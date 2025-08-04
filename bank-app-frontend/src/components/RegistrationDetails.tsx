@@ -10,7 +10,7 @@ import "react-datepicker/dist/react-datepicker.css";
 
 interface RegistrationDetailsProps {
   onBack: () => void;
-  onProceed: () => void;
+  onProceed: (customerId: string) => void; 
   phoneNumber: string;
   customerId?: string;
 }
@@ -77,7 +77,7 @@ const RegistrationDetails = ({ onBack, onProceed, phoneNumber }: RegistrationDet
         throw new Error(errorMessage || `Request failed with status ${response.status}`);
       }
 
-      onProceed();
+      onProceed(formData.customerId);
     } catch (err: any) {
       const errorMessage = err.message || "Error registering details";
       setError(errorMessage);

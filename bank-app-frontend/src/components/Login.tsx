@@ -6,11 +6,10 @@ import bankLogo from "@/assets/bank-logo.png";
 import { useState } from "react";
 
 interface LoginProps {
-  onBack: () => void;
   onProceed: () => void;
 }
 
-const Login = ({ onBack, onProceed }: LoginProps) => {
+const Login = ({ onProceed }: LoginProps) => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
 
@@ -64,14 +63,6 @@ const Login = ({ onBack, onProceed }: LoginProps) => {
           </div>
 
           <div className="flex gap-4">
-            <Button 
-              variant="outline" 
-              size="xl" 
-              className="w-full"
-              onClick={onBack}
-            >
-              Back
-            </Button>
             <Button 
               variant="banking" 
               size="xl" 

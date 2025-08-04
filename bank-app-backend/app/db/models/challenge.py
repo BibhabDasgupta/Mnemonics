@@ -34,7 +34,6 @@ class ChallengeType(enum.Enum):
 
 class Challenge(Base):
     __tablename__ = "challenges"
-
     challenge_string = Column(String, primary_key=True, index=True)
     customer_id = Column(String, ForeignKey("account.customer_id"), nullable=False, index=True)
     challenge_type = Column(SQLAlchemyEnum(ChallengeType), nullable=False)

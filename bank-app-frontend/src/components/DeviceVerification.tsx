@@ -6,13 +6,12 @@ import { encrypt } from "@/utils/encryption";
 import { getMockData, MockData } from "@/utils/mockData";
 
 interface DeviceVerificationProps {
-  onBack: () => void;
   onProceed: () => void;
   phoneNumber: string;
   customerId?: string;
 }
 
-const DeviceVerification = ({ onBack, onProceed, phoneNumber, customerId }: DeviceVerificationProps) => {
+const DeviceVerification = ({ onProceed, phoneNumber, customerId }: DeviceVerificationProps) => {
   const [simCheckStatus, setSimCheckStatus] = useState<'pending' | 'success' | 'failed' | 'update_required'>('pending');
   const [phoneCheckStatus, setPhoneCheckStatus] = useState<'pending' | 'success' | 'failed' | 'update_required'>('pending');
   const [error, setError] = useState("");
@@ -107,27 +106,9 @@ const DeviceVerification = ({ onBack, onProceed, phoneNumber, customerId }: Devi
     }
   };
 
-  const handleProceed = async () => {
+  const handleProceed = () => {
     if (simCheckStatus === "success" && phoneCheckStatus === "success") {
-      try {
-        const encryptedPhoneNumber = await encrypt(phoneNumber);
-        const response = await fetch("http://localhost:8000/api/v1/register/device-complete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            encrypted_phone_number: encryptedPhoneNumber,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.detail || "Device verification completion failed");
-        }
-
-        onProceed();
-      } catch (err: any) {
-        setError(err.message || "Error completing device verification");
-      }
+      onProceed();
     } else {
       setError("Both SIM and Phone checks must be successful to proceed.");
     }
@@ -137,14 +118,7 @@ const DeviceVerification = ({ onBack, onProceed, phoneNumber, customerId }: Devi
     <div className="min-h-screen bg-gradient-surface flex items-center justify-center p-4">
       <Card className="w-full max-w-md p-8 shadow-card animate-slide-up">
         <div className="flex items-center mb-6">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onBack}
-            className="mr-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
+          
           <h1 className="text-2xl font-bold text-foreground">
             Device Verification
           </h1>

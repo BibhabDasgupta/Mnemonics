@@ -1,5 +1,4 @@
-from sqlalchemy import (Column, Integer, String, LargeBinary, ForeignKey, DateTime,
-                        Boolean, Numeric, Date)
+from sqlalchemy import Column, Integer, String, LargeBinary, DateTime, Boolean, Numeric, Date, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSONB
@@ -11,13 +10,10 @@ class Account(Base):
     customer_id = Column(String, unique=True, nullable=False, index=True)
     account_number = Column(String, unique=True, nullable=False)
     account_type = Column(String, nullable=False, default="Savings")
-    balance = Column(Numeric(10, 2), nullable=False, default=0.00)
+    balance = Column(Numeric(10, 2), nullable=False, default=0.00)                  
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     transactions = relationship("Transaction", back_populates="account", cascade="all, delete-orphan")
-    passkeys = relationship("Passkey", back_populates="account", cascade="all, delete-orphan")
-    seedkey = relationship("Seedkey", back_populates="account", uselist=False, cascade="all, delete-orphan")
-    # app_data = relationship("AppData", back_populates="account", uselist=False, cascade="all, delete-orphan")
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -33,23 +29,20 @@ class Transaction(Base):
 class Passkey(Base):
     __tablename__ = "passkeys"
     id = Column(Integer, primary_key=True, index=True)
-    customer_id = Column(String, ForeignKey("account.customer_id"), nullable=False)
+    customer_id = Column(String, nullable=False, index=True)
     credential_id = Column(LargeBinary, unique=True, nullable=False)
     public_key = Column(LargeBinary, nullable=False)
+    symmetric_key = Column(String, nullable=True)
     sign_count = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    account = relationship("Account", back_populates="passkeys")
 
 class Seedkey(Base):
     __tablename__ = "seedkeys"
     id = Column(Integer, primary_key=True, index=True)
-    customer_id = Column(String, ForeignKey("account.customer_id"), nullable=False, unique=True)
+    customer_id = Column(String, unique=True, nullable=False, index=True)
     public_key = Column(String, nullable=False, unique=True)
     user_id = Column(String, nullable=False, unique=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    account = relationship("Account", back_populates="seedkey")
 
 class AppData(Base):
     __tablename__ = "app_data"
@@ -68,4 +61,3 @@ class AppData(Base):
     no_of_logged_in_devices = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
