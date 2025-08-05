@@ -4,7 +4,7 @@ import { useAppContext } from "@/context/AppContext";
 
 const RegistrationDetailsPage = () => {
   const navigate = useNavigate();
-  const { phoneNumber, setCustomerId, setError, setRegistrationCompleted } = useAppContext();
+  const { phoneNumber, setCustomerId, setError } = useAppContext();
 
   const handleBack = () => {
     navigate("/registration/otp");
