@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import FidoSeedKeyRegistration from "@/components/FidoSeedKeyRegistration";
-import { useAppContext } from "@/context/appContext";
+import { useAppContext } from "@/context/AppContext";
 
 const FidoSeedKeyRegistrationPage = () => {
   const navigate = useNavigate();

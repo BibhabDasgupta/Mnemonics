@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import DeviceVerification from "@/components/DeviceVerification";
-import { useAppContext } from "@/context/appContext";
+import { useAppContext } from "@/context/AppContext";
 
 const DeviceVerificationPage = () => {
   const navigate = useNavigate();

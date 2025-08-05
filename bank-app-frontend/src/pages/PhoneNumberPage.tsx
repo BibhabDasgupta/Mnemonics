@@ -1,7 +1,7 @@
 // pages/PhoneNumberPage.tsx
 import { useNavigate } from "react-router-dom";
 import PhoneNumberStep from "@/components/PhoneNumberStep";
-import { useAppContext } from "@/context/appContext";
+import { useAppContext } from "@/context/AppContext";
 
 interface PhoneNumberPageProps {
   title: string;

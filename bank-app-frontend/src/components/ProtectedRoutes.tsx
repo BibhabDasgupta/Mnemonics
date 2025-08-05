@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate, Outlet } from "react-router-dom";
-import { useAppContext } from "@/context/appContext";
+import { useAppContext } from "@/context/AppContext";
 
 const ProtectedRoutes = () => {
   const navigate = useNavigate();

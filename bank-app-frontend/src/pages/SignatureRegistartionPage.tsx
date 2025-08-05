@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import SignatureRegistration from "@/components/SignatureRegistration";
-import { useAppContext } from "@/context/appContext";
+import { useAppContext } from "@/context/AppContext";
 
 const SignatureRegistrationPage = () => {
   const navigate = useNavigate();

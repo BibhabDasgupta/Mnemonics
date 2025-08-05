@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import RegistrationDetails from "@/components/RegistrationDetails";
-import { useAppContext } from "@/context/appContext";
+import { useAppContext } from "@/context/AppContext";
 
 const RegistrationDetailsPage = () => {
   const navigate = useNavigate();
