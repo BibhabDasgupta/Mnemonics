@@ -12,7 +12,7 @@ const AlreadyRegisteredPage = () => {
   };
 
   const handleProceedToRestoration = () => {
-    navigate("/restoration/phone");
+    navigate("/landing");
   };
 
   return (

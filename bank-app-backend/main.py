@@ -10,9 +10,9 @@ from app.api.api_v1.endpoints import (
     fido_auth,
     accounts,
     user_info,
-    auth,
     register,
-    restore
+    restore,
+    login
 )
 # Import all models to ensure tables are created
 from app.db.models import user as user_models, challenge as challenge_model
@@ -68,7 +68,8 @@ app.include_router(fido_auth.router, prefix=settings.API_V1_STR, tags=["FIDO2 Au
 app.include_router(accounts.router, prefix=settings.API_V1_STR, tags=["Bank Accounts"])
 # app.include_router(auth.router, prefix=settings.API_V1_STR)
 app.include_router(register.router, prefix=settings.API_V1_STR, tags=["Registration"])
-app.include_router(restore.router, prefix=settings.API_V1_STR)
+app.include_router(login.router, prefix=settings.API_V1_STR, tags=["Login"])
+app.include_router(restore.router, prefix=settings.API_V1_STR, tags=["Restore"])
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

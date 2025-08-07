@@ -1,10 +1,31 @@
 import { useEffect } from "react";
-import { useNavigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useNavigate } from "react-router-dom";
 import { useAppContext } from "@/context/AppContext";
+import { jwtDecode } from "jwt-decode";
 
 const ProtectedRoutes = () => {
   const navigate = useNavigate();
   const { registrationCompleted } = useAppContext();
+
+  const checkTokenValidity = () => {
+    const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='));
+    if (!token) {
+      return false;
+    }
+    const tokenValue = token.split('=')[1];
+    try {
+      const decoded: any = jwtDecode(tokenValue);
+      const currentTime = Math.floor(Date.now() / 1000);
+      if (decoded.exp < currentTime) {
+        document.cookie = 'auth_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; Secure; HttpOnly; SameSite=Strict';
+        return false;
+      }
+      return true;
+    } catch (e) {
+      document.cookie = 'auth_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; Secure; HttpOnly; SameSite=Strict';
+      return false;
+    }
+  };
 
   useEffect(() => {
     const restrictedRoutes = [
@@ -18,40 +39,48 @@ const ProtectedRoutes = () => {
       "/registration/fido-seedkey",
       "/registration/signature",
       "/login",
+      "/dashboard",
     ];
     const currentPath = window.location.pathname;
 
-    // Overwrite history for protected routes and flood history stack
     if (protectedRoutes.includes(currentPath)) {
-      // Replace current history entry
-      navigate(currentPath, { replace: true });
-      // Push multiple identical history entries to block back navigation
       for (let i = 0; i < 10; i++) {
         window.history.pushState({}, "", window.location.href);
       }
     }
 
-    // Redirect to /login or /dashboard if accessing restricted routes after registration
     if (registrationCompleted && restrictedRoutes.includes(currentPath)) {
-      navigate(currentPath === "/dashboard" ? "/dashboard" : "/login", { replace: true });
+      navigate(checkTokenValidity() ? "/dashboard" : "/login", { replace: true });
+    } else if (currentPath === "/dashboard" && !checkTokenValidity()) {
+      navigate("/login", { replace: true });
     }
 
-    // Handle browser back/forward button (popstate event)
-    const handlePopstate = () => {
+    const handlePopstate = (event: PopStateEvent) => {
+      event.preventDefault();
       if (registrationCompleted && restrictedRoutes.includes(window.location.pathname)) {
         navigate("/login", { replace: true });
+      } else if (window.location.pathname === "/dashboard" && !checkTokenValidity()) {
+        navigate("/login", { replace: true });
+      } else {
+        navigate(window.location.pathname, { replace: true });
       }
     };
 
     window.addEventListener("popstate", handlePopstate);
 
-    // Cleanup event listener
+    const interval = setInterval(() => {
+      if (currentPath === "/dashboard" && !checkTokenValidity()) {
+        navigate("/login", { replace: true });
+      }
+    }, 1000);
+
     return () => {
       window.removeEventListener("popstate", handlePopstate);
+      clearInterval(interval);
     };
   }, [registrationCompleted, navigate]);
 
-  return <Outlet />;
+  return checkTokenValidity() || !["/dashboard"].includes(window.location.pathname) ? <Outlet /> : <Navigate to="/login" replace />;
 };
 
 export default ProtectedRoutes;

@@ -104,3 +104,15 @@ class OTPVerificationRequest(BaseModel):
     encrypted_phone_number: str
     otp_code: str
     
+
+class FidoLoginStartRequest(BaseModel):
+    customer_id: str
+
+class FidoLoginFinishRequest(BaseModel):
+    customer_id: str
+    credential: dict
+
+class SeedkeyVerificationRequest(BaseModel):
+    customer_id: str
+    challenge: str
+    signature: str

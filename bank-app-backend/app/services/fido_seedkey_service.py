@@ -8,9 +8,11 @@ from fastapi import HTTPException, Request
 from datetime import datetime, timedelta
 from sqlalchemy.sql import text
 import json
+import jwt
 import base64
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
+from app.core.config import settings
 from cryptography.hazmat.primitives.serialization import load_der_public_key
 
 def start_fido_registration(db: Session, customer_id: str):
@@ -88,22 +90,80 @@ async def register_fido_seedkey(db: Session, phone_number: str, customer_id: str
 
 
 
+# def start_fido_login(db: Session, customer_id: str):
+#     print(customer_id)
+#     query = text("SELECT customer_id, email, name FROM app_data WHERE customer_id = :customer_id")
+#     result = db.execute(query, {"customer_id": customer_id}).fetchone()
+#     if not result:
+#         raise HTTPException(status_code=404, detail="User not found or has no registered devices.")
+
+#     customer_id, email, name = result 
+#     passkeys = db.query(Passkey).filter(Passkey.customer_id == customer_id).all()
+#     if not passkeys:
+#         raise HTTPException(status_code=404, detail="No registered devices found.")
+
+#     allowed_credentials = [{"type": "public-key", "id": base64url_to_bytes(pk.credential_id), "transports": ["internal"]} for pk in passkeys]
+
+#     auth_options = generate_authentication_options(
+#         rp_id=settings.RP_ID,
+#         allow_credentials=allowed_credentials,
+#         user_verification="required",
+        
+#     )
+
+#     challenge_hex = auth_options.challenge.hex()
+#     challenge_service.create_challenge(
+#         db=db,
+#         challenge=challenge_hex,
+#         customer_id=customer_id,
+#         challenge_type=ChallengeType.FIDO2,
+#         expires_at=datetime.utcnow() + timedelta(minutes=5)
+#     )
+    
+#     return {
+#         "challenge": bytes_to_base64url(auth_options.challenge),
+#         "timeout": auth_options.timeout,
+#         "rpId": auth_options.rp_id,
+#         "allowCredentials": [
+#             {"type": cred['type'], "id": bytes_to_base64url(cred['id'])}
+#             for cred in allowed_credentials
+#         ],
+#         "userVerification": auth_options.user_verification,
+#         "user": {
+#             "id": bytes_to_base64url(customer_id.encode('utf-8')),
+#             "name": email,
+#             "displayName": name
+#         },
+#         "customerId": customer_id
+#     }
+
+
 def start_fido_login(db: Session, customer_id: str):
-    query = text("SELECT id, email, name FROM app_data WHERE customer_id = :customer_id")
+    print(customer_id)
+    query = text("SELECT customer_id, email, name FROM app_data WHERE customer_id = :customer_id")
     result = db.execute(query, {"customer_id": customer_id}).fetchone()
     if not result:
         raise HTTPException(status_code=404, detail="User not found or has no registered devices.")
 
-    customer_id, email, name = result
+    customer_id, email, name = result 
     passkeys = db.query(Passkey).filter(Passkey.customer_id == customer_id).all()
     if not passkeys:
         raise HTTPException(status_code=404, detail="No registered devices found.")
 
-    allowed_credentials = [{"type": "public-key", "id": pk.credential_id} for pk in passkeys]
+    # ✅ Fixed: Convert BYTEA credential_id back to base64url for client
+    allowed_credentials = [
+        {
+            "type": "public-key", 
+            "id": base64url_to_bytes(bytes_to_base64url(pk.credential_id)),  # Ensure proper conversion
+            "transports": ["internal"]  # Hint for platform authenticators
+        } 
+        for pk in passkeys
+    ]
     
     auth_options = generate_authentication_options(
-        rp_id="localhost",
+        rp_id=settings.RP_ID,
         allow_credentials=allowed_credentials,
+        user_verification="required",  # ✅ Force user verification
     )
 
     challenge_hex = auth_options.challenge.hex()
@@ -120,7 +180,11 @@ def start_fido_login(db: Session, customer_id: str):
         "timeout": auth_options.timeout,
         "rpId": auth_options.rp_id,
         "allowCredentials": [
-            {"type": cred['type'], "id": bytes_to_base64url(cred['id'])}
+            {
+                "type": cred["type"], 
+                "id": bytes_to_base64url(cred["id"]),
+                "transports": cred.get("transports", ["internal"])  # Include transport hints
+            }
             for cred in allowed_credentials
         ],
         "userVerification": auth_options.user_verification,
@@ -131,9 +195,10 @@ def start_fido_login(db: Session, customer_id: str):
         },
         "customerId": customer_id
     }
+    
 
 def finish_fido_login(db: Session, http_request: Request, customer_id: str, credential: dict):
-    query = text("SELECT id FROM app_data WHERE customer_id = :customer_id")
+    query = text("SELECT customer_id FROM app_data WHERE customer_id = :customer_id")
     result = db.execute(query, {"customer_id": customer_id}).fetchone()
     if not result:
         raise HTTPException(status_code=404, detail="Customer not found.")
@@ -165,7 +230,7 @@ def finish_fido_login(db: Session, http_request: Request, customer_id: str, cred
     if not db_challenge or db_challenge.customer_id != customer_id or db_challenge.challenge_type != ChallengeType.FIDO2:
         raise HTTPException(status_code=400, detail="Invalid FIDO2 challenge.")
 
-    passkey = db.query(Passkey).filter(Passkey.credential_id == parsed_credential.raw_id).first()
+    passkey = db.query(Passkey).filter(Passkey.credential_id == parsed_credential.id).first()
     if not passkey:
         raise HTTPException(status_code=404, detail="This security key is not registered.")
 
@@ -173,9 +238,9 @@ def finish_fido_login(db: Session, http_request: Request, customer_id: str, cred
         auth_verification = verify_authentication_response(
             credential=parsed_credential,
             expected_challenge=bytes.fromhex(db_challenge.challenge_string),
-            expected_rp_id="localhost",
-            expected_origin=http_request.headers.get("origin") or "http://localhost:3000",
-            credential_public_key=passkey.public_key,
+            expected_rp_id=settings.RP_ID,
+            expected_origin=http_request.headers.get("origin") or "http://localhost:8080",
+            credential_public_key=base64url_to_bytes(passkey.public_key),
             credential_current_sign_count=passkey.sign_count,
             require_user_verification=True,
         )
@@ -227,6 +292,29 @@ def verify_seedkey_signature(db: Session, customer_id: str, challenge: str, sign
         return {"status": "seedkey_verified", "customer_id": customer_id}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Seed key signature verification failed: {str(e)}")
+
+
+
+def start_seedkey_restoration(db: Session, user_id: str):
+    seedkey = db.query(Seedkey).filter(Seedkey.user_id == user_id).first()
+    if not seedkey:
+        raise HTTPException(status_code=404, detail="Seed key not found.")
+
+    from app.services import challenge_service
+    challenge = challenge_service.generate_challenge()
+    challenge_service.create_challenge(
+        db=db,
+        challenge=challenge,
+        customer_id=seedkey.customer_id,
+        challenge_type=ChallengeType.SEEDKEY,
+        expires_at=datetime.utcnow() + timedelta(minutes=5)
+    )
+
+    return {
+        "challenge": challenge,
+        "customer_id": seedkey.customer_id
+    }
+
 
 def start_seedkey_restoration(db: Session, user_id: str):
     seedkey = db.query(Seedkey).filter(Seedkey.user_id == user_id).first()

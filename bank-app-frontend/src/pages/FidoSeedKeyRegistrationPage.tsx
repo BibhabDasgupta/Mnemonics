@@ -4,7 +4,7 @@ import { useAppContext } from "@/context/AppContext";
 
 const FidoSeedKeyRegistrationPage = () => {
   const navigate = useNavigate();
-  const { phoneNumber, customerId, setError } = useAppContext();
+  const { phoneNumber, customerId, customerName, setError } = useAppContext();
 
   const handleProceed = () => {
     setError("");
@@ -15,6 +15,7 @@ const FidoSeedKeyRegistrationPage = () => {
     <FidoSeedKeyRegistration
       phoneNumber={phoneNumber}
       customerId={customerId}
+      customerName={customerName} // Fallback to "User" if empty
       onProceed={handleProceed}
     />
   );

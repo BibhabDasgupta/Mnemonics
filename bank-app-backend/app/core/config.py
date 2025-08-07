@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     TWILIO_VERIFY_SERVICE_SID: str
     TWILIO_PHONE_NUMBER: str
     PRIVATE_KEY: str
+    JWT_SECRET: str = "your_jwt_secret_here"
 
     class Config:
         env_file = ".env"
