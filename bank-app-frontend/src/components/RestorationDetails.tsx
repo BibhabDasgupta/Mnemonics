@@ -4,29 +4,86 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft } from "lucide-react";
+import { encrypt } from "@/utils/encryption";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 interface RestorationDetailsProps {
   onBack: () => void;
-  onProceed: () => void;
-  customerId?: string;
+  onProceed: (name?: string) => void;
+  phoneNumber: string;
+  setError: (error: string) => void;
 }
 
-const RestorationDetails = ({ onBack, onProceed }: RestorationDetailsProps) => {
+const RestorationDetails = ({ onBack, onProceed, phoneNumber, setError }: RestorationDetailsProps) => {
   const [formData, setFormData] = useState({
     customerId: "",
-    aadhaarNo: "",
-    dateOfBirth: ""
+    name: "",
+    email: "",
+    aadhaarNumber: "",
+    dateOfBirth: "",
   });
+  const [error, setLocalError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const isFormValid = Object.values(formData).every(value => value.trim() !== "");
-    if (isFormValid) {
-      onProceed();
+    setIsLoading(true);
+    setLocalError("");
+    setError("");
+
+    try {
+      // Log form data before encryption
+      console.log("Form data:", { ...formData, phoneNumber });
+
+      const encryptedCustomerId = await encrypt(formData.customerId);
+      const encryptedName = await encrypt(formData.name);
+      const encryptedEmail = await encrypt(formData.email);
+      const encryptedAadhaarNumber = await encrypt(formData.aadhaarNumber);
+      const encryptedDateOfBirth = await encrypt(formData.dateOfBirth);
+      const encryptedPhoneNumber = await encrypt(phoneNumber);
+
+      const payload = {
+        encrypted_customer_id: encryptedCustomerId,
+        encrypted_name: encryptedName,
+        encrypted_email: encryptedEmail,
+        encrypted_aadhaar_number: encryptedAadhaarNumber,
+        encrypted_date_of_birth: encryptedDateOfBirth,
+        encrypted_phone_number: encryptedPhoneNumber,
+      };
+      console.log("Sending payload:", payload);
+
+      const response = await fetch("http://localhost:8000/api/v1/restore/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch {
+          errorData = { detail: "Unknown error from server" };
+        }
+        console.error("Backend error response:", errorData);
+        // Handle nested detail array
+        let errorMessage = errorData.detail;
+        if (Array.isArray(errorData.detail)) {
+          errorMessage = errorData.detail.map((err: any) => err.msg).join("; ");
+        }
+        throw new Error(errorMessage || `Request failed with status ${response.status}`);
+      }
+
+      localStorage.setItem("userName", formData.name);
+      onProceed(formData.name);
+    } catch (err: any) {
+      const errorMessage = err.message || "Error verifying restoration details";
+      setLocalError(errorMessage);
+      setError(errorMessage);
+      console.error("Restoration error:", err, "Message:", errorMessage);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -47,62 +104,90 @@ const RestorationDetails = ({ onBack, onProceed }: RestorationDetailsProps) => {
           </h1>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="customerId">Customer ID</Label>
             <Input
               id="customerId"
+              name="customerId"
               type="text"
-              placeholder="Enter Customer ID"
+              placeholder="Enter your Customer ID"
               value={formData.customerId}
-              onChange={(e) => handleInputChange("customerId", e.target.value)}
+              onChange={(e) => setFormData({ ...formData, customerId: e.target.value })}
               className="h-12"
               required
             />
           </div>
-
           <div className="space-y-2">
-            <Label htmlFor="aadhaar">Aadhaar Number</Label>
+            <Label htmlFor="name">Full Name</Label>
             <Input
-              id="aadhaar"
+              id="name"
+              name="name"
               type="text"
-              placeholder="Enter Aadhaar Number"
-              value={formData.aadhaarNo}
-              onChange={(e) => handleInputChange("aadhaarNo", e.target.value)}
+              placeholder="Enter your full name"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               className="h-12"
-              maxLength={12}
               required
             />
           </div>
-
           <div className="space-y-2">
-            <Label htmlFor="dob">Date of Birth</Label>
+            <Label htmlFor="email">Email</Label>
             <Input
-              id="dob"
-              type="date"
-              value={formData.dateOfBirth}
-              onChange={(e) => handleInputChange("dateOfBirth", e.target.value)}
+              id="email"
+              name="email"
+              type="email"
+              placeholder="Enter your email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               className="h-12"
               required
             />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="aadhaarNumber">Aadhaar Number</Label>
+            <Input
+              id="aadhaarNumber"
+              name="aadhaarNumber"
+              type="text"
+              placeholder="Enter your Aadhaar number"
+              value={formData.aadhaarNumber}
+              onChange={(e) => setFormData({ ...formData, aadhaarNumber: e.target.value })}
+              className="h-12"
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="dateOfBirth">Date of Birth</Label>
+            <DatePicker
+              selected={formData.dateOfBirth ? new Date(formData.dateOfBirth) : null}
+              onChange={(date: Date) =>
+                setFormData({
+                  ...formData,
+                  dateOfBirth: date ? date.toISOString().split("T")[0] : "",
+                })
+              }
+              dateFormat="yyyy-MM-dd"
+              className="h-12 w-full border rounded-md p-2"
+              placeholderText="Select date"
+              required
+            />
+          </div>
 
-          <Button 
-            type="submit" 
-            variant="banking" 
-            size="xl" 
-            className="w-full mt-6"
-            disabled={!Object.values(formData).every(value => value.trim() !== "")}
+          {error && (
+            <p className="text-sm text-red-600">{error}</p>
+          )}
+
+          <Button
+            type="submit"
+            variant="banking"
+            size="xl"
+            className="w-full"
+            disabled={isLoading || !formData.customerId || !formData.name || !formData.email || !formData.aadhaarNumber || !formData.dateOfBirth}
           >
-            Restore Account
+            {isLoading ? "Submitting..." : "Verify Details"}
           </Button>
         </form>
-
-        <div className="mt-6 p-4 bg-muted rounded-lg">
-          <p className="text-sm text-muted-foreground text-center">
-            Your account will be restored after verification of the provided details
-          </p>
-        </div>
       </Card>
     </div>
   );
