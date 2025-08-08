@@ -7,3 +7,9 @@ pydantic-settings
 fido2
 python-jose[cryptography]
 alembic
+pydantic[email]
+eth-account
+twilio
+webauthn
+opencv-python
+Pillow

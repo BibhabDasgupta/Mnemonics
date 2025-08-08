@@ -1,0 +1,37 @@
+# Logs
+bank-app-frontend/logs
+bank-app-frontend/*.log
+bank-app-frontend/npm-debug.log*
+bank-app-frontend/yarn-debug.log*
+bank-app-frontend/yarn-error.log*
+bank-app-frontend/pnpm-debug.log*
+bank-app-frontend/lerna-debug.log*
+
+bank-app-frontend/node_modules
+bank-app-frontend/dist
+bank-app-frontend/dist-ssr
+bank-app-frontend/*.local
+
+# Editor directories and files
+bank-app-frontend/.vscode/*
+bank-app-frontend/!.vscode/extensions.json
+bank-app-frontend/.idea
+bank-app-frontend/.DS_Store
+bank-app-frontend/*.suo
+bank-app-frontend/*.ntvs*
+bank-app-frontend/*.njsproj
+bank-app-frontend/*.sln
+bank-app-frontend/*.sw?
+bank-app-frontend/.env.local
+bank-app-frontend/.env
+
+bank-app-backend/.env
+bank-app-backend/app/api/api_v1/endpoints/__pycache__
+bank-app-backend/app/db/__pycache__
+bank-app-backend/app/services/__pycache__
+bank-app-backend/app/schemas/__pycache__
+bank-app-backend/app/db/models/__pycache__
+bank-app-backend/app/core/__pycache__
+bank-app-backend/export_git_files.py 
+bank-app-backend/git_files_export.txt
+bank-app-backend/venv

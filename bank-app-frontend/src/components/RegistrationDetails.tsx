@@ -33,7 +33,9 @@ const RegistrationDetails = ({ onBack, onProceed, phoneNumber }: RegistrationDet
     try {
       // Log form data before encryption
       console.log("Form data:", { ...formData, phoneNumber });
-
+      if(formData.customerId){
+        localStorage.setItem("customer_unique_id", formData.customerId);
+      }
       const encryptedCustomerId = await encrypt(formData.customerId);
       const encryptedName = await encrypt(formData.name);
       const encryptedEmail = await encrypt(formData.email);

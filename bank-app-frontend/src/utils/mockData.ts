@@ -22,6 +22,10 @@ const MOCK_DATABASE: Record<string, MockData> = {
     simData: { carrierName: "Airtel", imsi: "405856987654321" },
     phoneData: { deviceId: "DEVICE456", model: "iPhone 13" },
   },
+  "+919068265551": {
+    simData: { carrierName: "Airtel", imsi: "405856987654322" },
+    phoneData: { deviceId: "DEVICE456", model: "iPhone 13" },
+  },
 };
 
 export const getMockData = (phoneNumber: string): MockData | null => {
