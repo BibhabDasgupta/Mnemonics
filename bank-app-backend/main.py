@@ -7,9 +7,7 @@ from app.db.base import Base, engine
 # Import all routers
 from app.api.api_v1.endpoints import (
     seedkey_auth,
-    fido_auth,
     accounts,
-    user_info,
     register,
     restore,
     login
@@ -62,11 +60,8 @@ def read_root():
     return {"status": "Backend is running"}
 
 # Include all API routers
-app.include_router(user_info.router, prefix=settings.API_V1_STR, tags=["User Information"])
 app.include_router(seedkey_auth.router, prefix=settings.API_V1_STR, tags=["Seedkey Authentication"])
-app.include_router(fido_auth.router, prefix=settings.API_V1_STR, tags=["FIDO2 Authentication"])
 app.include_router(accounts.router, prefix=settings.API_V1_STR, tags=["Bank Accounts"])
-# app.include_router(auth.router, prefix=settings.API_V1_STR)
 app.include_router(register.router, prefix=settings.API_V1_STR, tags=["Registration"])
 app.include_router(login.router, prefix=settings.API_V1_STR, tags=["Login"])
 app.include_router(restore.router, prefix=settings.API_V1_STR, tags=["Restore"])

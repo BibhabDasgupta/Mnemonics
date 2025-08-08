@@ -4,7 +4,7 @@ from pydantic import EmailStr
 from datetime import datetime, timedelta
 import jwt
 from app.db.base import get_db
-from app.services import fido_seedkey_service, user_service
+from app.services import fido_seedkey_service
 from app.schemas.user import FidoLoginStartRequest, FidoLoginFinishRequest, SeedkeyVerificationRequest
 from app.core.config import settings
 
@@ -21,6 +21,8 @@ def start_fido_login(request: FidoLoginStartRequest, db: Session = Depends(get_d
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"FIDO login start failed: {str(e)}")
+
+
 
 @router.post("/login/fido-finish")
 def finish_fido_login(
@@ -39,6 +41,8 @@ def finish_fido_login(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"FIDO login finish failed: {str(e)}")
 
+        
+
 @router.post("/login/seedkey-verify")
 def verify_seedkey(
     request: SeedkeyVerificationRequest,
@@ -49,7 +53,7 @@ def verify_seedkey(
     """
     try:
         # Verify seed key signature
-        result = fido_seedkey_service.verify_seedkey_signature(db, request.customer_id, request.challenge, request.signature)
+        result = fido_seedkey_service.verify_seedkey_signature(db, request.customer_id, request.challenge, request.public_key)
         
         # Generate JWT
         payload = {
@@ -60,7 +64,7 @@ def verify_seedkey(
         token = jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
 
         # Update no_of_logged_in_devices
-        customer = user_service.get_customer_by_id(db, request.customer_id)
+        customer = fido_seedkey_service.get_customer_by_id(db, request.customer_id)
         if not customer:
             raise HTTPException(status_code=404, detail="Customer not found")
         

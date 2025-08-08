@@ -115,4 +115,4 @@ class FidoLoginFinishRequest(BaseModel):
 class SeedkeyVerificationRequest(BaseModel):
     customer_id: str
     challenge: str
-    signature: str
+    public_key: str

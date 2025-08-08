@@ -76,7 +76,7 @@ const RegistrationDetails = ({ onBack, onProceed, phoneNumber }: RegistrationDet
         }
         throw new Error(errorMessage || `Request failed with status ${response.status}`);
       }
-
+      localStorage.setItem('userName', formData.name);
       onProceed(formData.customerId);
     } catch (err: any) {
       const errorMessage = err.message || "Error registering details";
