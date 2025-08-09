@@ -33,11 +33,17 @@ const ProtectedRoutes = () => {
       "/registration/device-verification",
       "/registration/fido-seedkey",
       "/registration/signature",
+      "/restoration/fido-seedkey",
+      "/restoration/phone",
+      "/restoration/details",
+      "/restoration/signature"
     ];
     const protectedRoutes = [
       "/registration/device-verification",
       "/registration/fido-seedkey",
       "/registration/signature",
+      "/restoration/fido-seedkey",
+      "/restoration/signature",
       "/login",
       "/dashboard",
     ];
