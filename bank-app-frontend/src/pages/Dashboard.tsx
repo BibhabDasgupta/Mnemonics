@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
+// --- File: src/pages/Dashboard.tsx ---
+
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '@/context/AppContext';
 import Dashboard from '@/components/Dashboard';
+import { TransactionModal } from '@/components/TransactionModal';
 
 interface Transaction {
   id: string;
@@ -13,49 +16,82 @@ interface Transaction {
 
 const DashboardPage = () => {
   const navigate = useNavigate();
-  const { customerName } = useAppContext();
-  const [balance, setBalance] = useState(124856.50);
-  const [transactions, setTransactions] = useState<Transaction[]>([
-    { id: '1', description: 'Salary Credit', amount: 45000, type: 'credit', date: 'Today, 9:30 AM' },
-    { id: '2', description: 'ATM Withdrawal', amount: -5000, type: 'debit', date: 'Yesterday, 2:15 PM' },
-    { id: '3', description: 'UPI Transfer', amount: -1250, type: 'debit', date: '2 days ago, 6:45 PM' },
-  ]);
+  const { customerId, customerName } = useAppContext();
+  const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
+
+  const [balance, setBalance] = useState(0);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchAccountData = useCallback(async () => {
+    if (!customerId) return;
+
+    const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
+    if (!token) {
+      navigate('/login', { replace: true });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await fetch(`http://localhost:8000/api/v1/accounts/${customerId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error("Failed to fetch account data.");
+
+      const data = await response.json();
+      // Assuming the first account is the primary one for this dashboard
+      if (data.length > 0) {
+        setBalance(data[0].balance);
+        setTransactions(data[0].transactions);
+      }
+    } catch (error) {
+      console.error("Error fetching account data:", error);
+      // Optionally, show an error toast to the user
+    } finally {
+      setIsLoading(false);
+    }
+  }, [customerId, navigate]);
 
   useEffect(() => {
-    const checkToken = () => {
-      const token = document.cookie
-        .split('; ')
-        .find(row => row.startsWith('auth_token='))
-        ?.split('=')[1];
-
-      if (!token) {
-        navigate('/login', { replace: true });
-      }
-    };
-
-    checkToken();
-    window.addEventListener('popstate', (event) => {
-      event.preventDefault();
-      navigate('/dashboard', { replace: true });
-    });
-
-    return () => {
-      window.removeEventListener('popstate', () => {});
-    };
-  }, [navigate]);
+    const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
+    if (!token) {
+      navigate('/login', { replace: true });
+    } else {
+      fetchAccountData();
+    }
+  }, [navigate, fetchAccountData]);
 
   const handleLogout = () => {
     document.cookie = 'auth_token=; max-age=0; path=/; Secure; SameSite=Strict';
     navigate('/login', { replace: true });
   };
 
+  const handleTransactionSuccess = (newBalance: number) => {
+    setBalance(newBalance);
+    // Refetch all data to get the latest transaction list
+    fetchAccountData();
+  };
+
+  if (isLoading) {
+    return <div className="min-h-screen flex items-center justify-center">Loading Dashboard...</div>;
+  }
+
   return (
-    <Dashboard
-      customerName={customerName}
-      balance={balance}
-      transactions={transactions}
-      onLogout={handleLogout}
-    />
+      <>
+        <Dashboard
+            customerName={customerName}
+            balance={balance}
+            transactions={transactions}
+            onLogout={handleLogout}
+            onInitiateTransaction={() => setIsTransactionModalOpen(true)}
+        />
+        <TransactionModal
+            isOpen={isTransactionModalOpen}
+            onClose={() => setIsTransactionModalOpen(false)}
+            onTransactionSuccess={handleTransactionSuccess}
+        />
+      </>
   );
 };
 

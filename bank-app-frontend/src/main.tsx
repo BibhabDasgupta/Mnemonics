@@ -8,7 +8,7 @@ createRoot(document.getElementById("root")!).render(
     <AppProvider>
         <BehavioralAnalytics.Provider
             endpoint="http://localhost:8000/api/v1/analytics/behavior"
-            intervalMs={10000} // Set to 60 seconds
+            intervalMs={1000000} // Set to 60 seconds
             debug={false}
         >
             <App />
