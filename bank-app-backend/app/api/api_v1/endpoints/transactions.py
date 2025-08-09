@@ -226,6 +226,9 @@ def create_transaction(
         current_features["TX_DURING_WEEKEND"] = 1 if now.weekday() >= 5 else 0
         current_features["TX_DURING_NIGHT"] = 1 if not 6 <= now.hour <= 22 else 0
 
+        # Print all current features for debugging
+        logger.info("Current features: %s", current_features)
+
         logger.debug(
             "TX features: amount=%s weekend=%s night=%s at=%s",
             current_features["TX_AMOUNT"],
