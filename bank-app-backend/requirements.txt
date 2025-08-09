@@ -13,3 +13,6 @@ twilio
 webauthn
 opencv-python
 Pillow
+pandas
+torch
+scikit-learn==1.6.1
