@@ -14,7 +14,8 @@ from app.api.api_v1.endpoints import (
     login,
     analytics,
     transactions,
-    ml_analytics
+    ml_analytics,
+    location
 )
 # Import all models to ensure tables are created
 from app.db.models import user as user_models, challenge as challenge_model, behavior as behavior_model,features as features_model
@@ -28,6 +29,13 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
+
+# Add to the router includes
+app.include_router(location.router, prefix=settings.API_V1_STR, tags=["Location Tracking"])
+
+# Also ensure the UserLocation table is created
+from app.services.location_service import UserLocation
+UserLocation.metadata.create_all(bind=engine)
 
 # --- THIS IS THE DEFINITIVE DEBUGGING MIDDLEWARE ---
 @app.middleware("http")

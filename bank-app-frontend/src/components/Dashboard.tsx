@@ -33,6 +33,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useSecurityContext } from "@/context/SecurityContext";
+import { useLocationContext } from "@/context/LocationContext";
 
 interface Transaction {
   id: string;
@@ -69,6 +70,16 @@ const Dashboard = ({
 
   // Security context and new security state
   const { isSecurityBlocked } = useSecurityContext();
+  
+  // ✅ ADD: Location context integration
+  const { 
+    hasLocationPermission, 
+    isTracking, 
+    lastValidation,
+    requestPermission,
+    startTracking 
+  } = useLocationContext();
+
   const [lastLoginTime] = useState(new Date().toISOString());
   const [deviceInfo] = useState({
     browser: navigator.userAgent.includes('Chrome') ? 'Chrome' : 
@@ -171,6 +182,11 @@ const Dashboard = ({
                       <CheckCircle className="w-3 h-3 text-green-500" />
                       <span>End-to-end encryption</span>
                     </div>
+                    {/* ✅ ADD: Location security status in header tooltip */}
+                    <div className="flex items-center space-x-1">
+                      <CheckCircle className={`w-3 h-3 ${hasLocationPermission ? 'text-green-500' : 'text-yellow-500'}`} />
+                      <span>{hasLocationPermission ? 'Location tracking active' : 'Location permission pending'}</span>
+                    </div>
                   </div>
                 </div>
               </TooltipContent>
@@ -265,7 +281,7 @@ const Dashboard = ({
               </div>
             </Card>
 
-            {/* New Security Information Card */}
+            {/* Enhanced Security Information Card with Location */}
             <Card className="p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-md font-semibold">Security Info</h3>
@@ -297,10 +313,12 @@ const Dashboard = ({
                     <MapPin className="w-3 h-3 text-muted-foreground" />
                     <span className="text-muted-foreground">Location</span>
                   </div>
-                  <span className="font-medium">{deviceInfo.location}</span>
+                  <span className="font-medium">
+                    {lastValidation?.location?.city || deviceInfo.location}
+                  </span>
                 </div>
 
-                {/* Security Features Status */}
+                {/* ✅ ADD: Enhanced Security Features Status Grid */}
                 <div className="pt-2 border-t border-border">
                   <div className="grid grid-cols-2 gap-2">
                     <Tooltip>
@@ -339,19 +357,65 @@ const Dashboard = ({
                       </TooltipContent>
                     </Tooltip>
 
+                    {/* ✅ ADD: Location status in security grid */}
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div className="flex items-center space-x-1">
-                          <CheckCircle className="w-3 h-3 text-green-500" />
-                          <span className="text-green-700 font-medium">Verified</span>
+                          <MapPin className={`w-3 h-3 ${hasLocationPermission ? 'text-green-500' : 'text-yellow-500'}`} />
+                          <span className={`font-medium ${hasLocationPermission ? 'text-green-700' : 'text-yellow-700'}`}>
+                            {hasLocationPermission ? 'Location' : 'No GPS'}
+                          </span>
                         </div>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Device is trusted</p>
+                        <p>{hasLocationPermission ? 'GPS location tracking active' : 'GPS permission required'}</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
                 </div>
+
+                {/* ✅ ADD: Location permission request UI */}
+                {!hasLocationPermission && (
+                  <div className="pt-2 border-t border-border">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full text-xs"
+                      onClick={async () => {
+                        console.log('🌍 [Dashboard] Requesting location permission');
+                        const granted = await requestPermission();
+                        if (granted) {
+                          console.log('🌍 [Dashboard] Permission granted, starting tracking');
+                          startTracking();
+                        } else {
+                          console.log('🌍 [Dashboard] Permission denied');
+                        }
+                      }}
+                    >
+                      <MapPin className="w-3 h-3 mr-1" />
+                      Enable Location Security
+                    </Button>
+                  </div>
+                )}
+
+                {/* ✅ ADD: Location validation status alerts */}
+                {lastValidation && lastValidation.is_suspicious && (
+                  <div className="pt-2 border-t border-red-200">
+                    <Badge variant="destructive" className="w-full justify-center text-xs animate-pulse">
+                      Location Alert: {lastValidation.message}
+                    </Badge>
+                  </div>
+                )}
+
+                {/* ✅ ADD: Location tracking status indicator */}
+                {hasLocationPermission && isTracking && (
+                  <div className="pt-2 border-t border-green-200">
+                    <div className="flex items-center justify-center space-x-1 text-green-700">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                      <span className="text-xs font-medium">Location monitoring active</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Security Alert if blocked */}
                 {isSecurityBlocked && (
@@ -367,6 +431,23 @@ const Dashboard = ({
 
           {/* Right column - Enhanced with security notices */}
           <div className="lg:col-span-2 space-y-6">
+            {/* ✅ ADD: Location-based security notice */}
+            {lastValidation && lastValidation.distance_km > 10 && !lastValidation.is_suspicious && (
+              <Card className="p-4 bg-amber-50 border-amber-200">
+                <div className="flex items-center space-x-3">
+                  <MapPin className="w-5 h-5 text-amber-600" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-amber-900">
+                      Location change detected
+                    </p>
+                    <p className="text-xs text-amber-700">
+                      We noticed you're {lastValidation.distance_km.toFixed(1)}km from your usual location. Your account remains secure.
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            )}
+
             {/* Security Notice Banner (only show occasionally) */}
             {Math.random() > 0.7 && ( // Show 30% of the time
               <Card className="p-4 bg-blue-50 border-blue-200">
