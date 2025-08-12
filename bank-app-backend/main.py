@@ -1,3 +1,4 @@
+# --- File: bank-app-backend/main.py ---
 from fastapi import FastAPI, Request
 import uvicorn 
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +13,8 @@ from app.api.api_v1.endpoints import (
     restore,
     login,
     analytics,
-    transactions
+    transactions,
+    ml_analytics
 )
 # Import all models to ensure tables are created
 from app.db.models import user as user_models, challenge as challenge_model, behavior as behavior_model,features as features_model
@@ -20,8 +22,7 @@ from app.db.models import user as user_models, challenge as challenge_model, beh
 user_models.Base.metadata.create_all(bind=engine)
 challenge_model.Base.metadata.create_all(bind=engine)
 behavior_model.Base.metadata.create_all(bind=engine)
-features_model.Base.metadata.create_all(bind=engine) # MODIFIED: Create features tables
-
+features_model.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -72,7 +73,7 @@ app.include_router(login.router, prefix=settings.API_V1_STR, tags=["Login"])
 app.include_router(restore.router, prefix=settings.API_V1_STR, tags=["Restoration"])
 app.include_router(analytics.router, prefix=settings.API_V1_STR, tags=["Behavioral Analytics"])
 app.include_router(transactions.router, prefix=settings.API_V1_STR, tags=["Transactions"]) # MODIFIED: Include the new router
-
+app.include_router(ml_analytics.router, prefix=settings.API_V1_STR, tags=["ML Behavioral Analytics"])
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

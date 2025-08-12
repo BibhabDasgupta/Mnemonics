@@ -1,3 +1,4 @@
+// --- File: src/App.tsx ---
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -21,6 +22,8 @@ import SignatureVerificationPage from "./pages/SignatureVerificationPage";
 import RevokedPage from "./pages/RevokedPage";
 import AlreadyRegisteredPage from "./pages/AlreadyRegsiteredPage";
 import NotFound from "./pages/NotFound";
+import SecurityVerificationPage from "./pages/SecurityVerificationPage";
+import SecurityGuard from "@/components/SecurityGuard";
 import { useEffect, useState } from "react";
 import { initIndexedDB, loadCustomerInfo } from "@/utils/deviceStateChecker";
 import { useAppContext } from "@/context/AppContext";
@@ -87,27 +90,30 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <Routes>
-            <Route element={<ProtectedRoutes />}>
-              <Route path="/" element={<RootRedirect />} />
-              <Route path="/landing" element={<LandingPage />} />
-              <Route path="/registration/phone" element={<PhoneNumberPage title="Registration" isOTP={false} />} />
-              <Route path="/registration/otp" element={<PhoneNumberPage title="Registration - OTP Verification" isOTP={true} />} />
-              <Route path="/registration/details" element={<RegistrationDetailsPage />} />
-              <Route path="/registration/device-verification" element={<DeviceVerificationPage />} />
-              <Route path="/registration/fido-seedkey" element={<FidoSeedKeyRegistrationPage />} />
-              <Route path="/registration/signature" element={<SignatureRegistrationPage />} />
-              <Route path="/restoration/details" element={<RestorationDetailsPage />} />
-              <Route path="/restoration/phone" element={<RestorationPhonePage title="Account Restoration" />} />
-              <Route path="/restoration/fido-seedkey" element={<FidoSeedKeyRestorationPage />} />
-              <Route path="/restoration/signature" element={<SignatureVerificationPage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/revoked" element={<RevokedPage />} />
-              <Route path="/already-registered" element={<AlreadyRegisteredPage />} />
-              <Route path="*" element={<NotFound />} />
-            </Route>
-          </Routes>
+          <SecurityGuard>
+            <Routes>
+              <Route element={<ProtectedRoutes />}>
+                <Route path="/" element={<RootRedirect />} />
+                <Route path="/landing" element={<LandingPage />} />
+                <Route path="/registration/phone" element={<PhoneNumberPage title="Registration" isOTP={false} />} />
+                <Route path="/registration/otp" element={<PhoneNumberPage title="Registration - OTP Verification" isOTP={true} />} />
+                <Route path="/registration/details" element={<RegistrationDetailsPage />} />
+                <Route path="/registration/device-verification" element={<DeviceVerificationPage />} />
+                <Route path="/registration/fido-seedkey" element={<FidoSeedKeyRegistrationPage />} />
+                <Route path="/registration/signature" element={<SignatureRegistrationPage />} />
+                <Route path="/restoration/details" element={<RestorationDetailsPage />} />
+                <Route path="/restoration/phone" element={<RestorationPhonePage title="Account Restoration" />} />
+                <Route path="/restoration/fido-seedkey" element={<FidoSeedKeyRestorationPage />} />
+                <Route path="/restoration/signature" element={<SignatureVerificationPage />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/security-verification" element={<SecurityVerificationPage />} />
+                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/revoked" element={<RevokedPage />} />
+                <Route path="/already-registered" element={<AlreadyRegisteredPage />} />
+                <Route path="*" element={<NotFound />} />
+              </Route>
+            </Routes>
+          </SecurityGuard>
         </BrowserRouter>
       </TooltipProvider>
   </QueryClientProvider>

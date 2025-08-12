@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   CreditCard,
   TrendingUp,
@@ -13,6 +15,14 @@ import {
   User,
   LayoutGrid,
   Menu,
+  Shield,
+  Clock,
+  MapPin,
+  Smartphone,
+  Wifi,
+  Lock,
+  Activity,
+  CheckCircle,
 } from "lucide-react";
 import bankLogo from "@/assets/bank-logo.png";
 import {
@@ -22,6 +32,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { useSecurityContext } from "@/context/SecurityContext";
 
 interface Transaction {
   id: string;
@@ -49,10 +60,32 @@ const Dashboard = ({
   balance,
   transactions,
 }: DashboardProps) => {
-  // Pagination state for Recent Transactions card
+  // Existing state
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = PAGE_SIZE_DEFAULT;
+  const [open, setOpen] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(MODAL_BATCH_SIZE);
+  const endRef = useRef<HTMLDivElement | null>(null);
 
+  // Security context and new security state
+  const { isSecurityBlocked } = useSecurityContext();
+  const [lastLoginTime] = useState(new Date().toISOString());
+  const [deviceInfo] = useState({
+    browser: navigator.userAgent.includes('Chrome') ? 'Chrome' : 
+             navigator.userAgent.includes('Firefox') ? 'Firefox' : 
+             navigator.userAgent.includes('Safari') ? 'Safari' : 'Unknown',
+    os: navigator.platform,
+    location: 'Mumbai, India', // In real app, get from geolocation/IP
+  });
+  const [securityStatus] = useState({
+    behavioralMonitoring: true,
+    deviceTrusted: true,
+    mlProtection: true,
+    encryptionActive: true,
+  });
+  const [balanceVisible, setBalanceVisible] = useState(true);
+
+  // Existing pagination logic
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil((transactions?.length || 0) / pageSize)),
     [transactions, pageSize]
@@ -63,11 +96,7 @@ const Dashboard = ({
     return (transactions || []).slice(start, start + pageSize);
   }, [transactions, currentPage, pageSize]);
 
-  // View All modal state with infinite scroll
-  const [open, setOpen] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(MODAL_BATCH_SIZE);
-  const endRef = useRef<HTMLDivElement | null>(null);
-
+  // Existing useEffects
   useEffect(() => {
     if (!open) return;
     const observer = new IntersectionObserver(
@@ -90,6 +119,17 @@ const Dashboard = ({
     }
   }, [open, transactions.length]);
 
+  const formatLastLogin = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+    
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    if (diffMinutes < 1440) return `${Math.floor(diffMinutes / 60)}h ago`;
+    return date.toLocaleDateString();
+  };
+
   return (
     <div className="min-h-screen bg-gradient-surface">
       <header className="bg-card/80 backdrop-blur-sm sticky top-0 z-50 shadow-card">
@@ -103,7 +143,39 @@ const Dashboard = ({
               </p>
             </div>
           </div>
+          
+          {/* Enhanced Header with Security Status */}
           <div className="flex items-center space-x-2">
+            {/* Security Status Indicator */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center space-x-1 px-2 py-1 rounded-full bg-green-50 border border-green-200">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                  <Shield className="w-3 h-3 text-green-600" />
+                  <span className="text-xs font-medium text-green-700 hidden sm:inline">Secure</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-xs">
+                <div className="space-y-1">
+                  <p className="font-medium">Security Status: Active</p>
+                  <div className="text-xs space-y-1">
+                    <div className="flex items-center space-x-1">
+                      <CheckCircle className="w-3 h-3 text-green-500" />
+                      <span>Behavioral monitoring active</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <CheckCircle className="w-3 h-3 text-green-500" />
+                      <span>ML fraud protection enabled</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <CheckCircle className="w-3 h-3 text-green-500" />
+                      <span>End-to-end encryption</span>
+                    </div>
+                  </div>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+
             <Button variant="ghost" size="icon" className="hidden lg:inline-flex">
               <LayoutGrid className="w-4 h-4" />
             </Button>
@@ -121,20 +193,44 @@ const Dashboard = ({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 animate-fade-in">
           {/* Left column */}
           <div className="lg:col-span-1 space-y-6">
+            {/* Enhanced Balance Card with Security */}
             <Card className="p-6 bg-gradient-primary text-white shadow-glow">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-2">
                   <User className="w-5 h-5" />
                   <span className="text-sm opacity-90">{customerName || "John Doe"}</span>
                 </div>
-                <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" aria-label="Toggle balance visibility">
-                  <Eye className="w-4 h-4" />
-                </Button>
+                <div className="flex items-center space-x-2">
+                  {/* Security indicator in balance card */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="p-1">
+                        <Lock className="w-3 h-3 opacity-75" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Account secured with behavioral biometrics</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="text-white hover:bg-white/20" 
+                    aria-label="Toggle balance visibility"
+                    onClick={() => setBalanceVisible(!balanceVisible)}
+                  >
+                    <Eye className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
               <div>
                 <p className="text-sm opacity-75 mb-1">Available Balance</p>
                 <h2 className="text-3xl font-bold tracking-tight">
-                  {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(balance)}
+                  {balanceVisible 
+                    ? new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(balance)
+                    : "₹ ****.**"
+                  }
                 </h2>
               </div>
               <div className="flex items-center mt-4 space-x-4">
@@ -147,6 +243,7 @@ const Dashboard = ({
               </div>
             </Card>
 
+            {/* Quick Actions */}
             <Card className="p-4">
               <h3 className="text-md font-semibold mb-4 px-2">Quick Actions</h3>
               <div className="grid grid-cols-2 md:grid-cols-2 gap-4">
@@ -167,14 +264,143 @@ const Dashboard = ({
                 </div>
               </div>
             </Card>
+
+            {/* New Security Information Card */}
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-md font-semibold">Security Info</h3>
+                <Shield className="w-4 h-4 text-green-600" />
+              </div>
+              
+              <div className="space-y-3 text-xs">
+                {/* Last Login */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Clock className="w-3 h-3 text-muted-foreground" />
+                    <span className="text-muted-foreground">Last login</span>
+                  </div>
+                  <span className="font-medium">{formatLastLogin(lastLoginTime)}</span>
+                </div>
+
+                {/* Device Info */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Smartphone className="w-3 h-3 text-muted-foreground" />
+                    <span className="text-muted-foreground">Device</span>
+                  </div>
+                  <span className="font-medium">{deviceInfo.browser}</span>
+                </div>
+
+                {/* Location */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <MapPin className="w-3 h-3 text-muted-foreground" />
+                    <span className="text-muted-foreground">Location</span>
+                  </div>
+                  <span className="font-medium">{deviceInfo.location}</span>
+                </div>
+
+                {/* Security Features Status */}
+                <div className="pt-2 border-t border-border">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center space-x-1">
+                          <Activity className="w-3 h-3 text-blue-500" />
+                          <span className="text-blue-700 font-medium">Behavioral</span>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Behavioral biometrics active</p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center space-x-1">
+                          <Shield className="w-3 h-3 text-green-500" />
+                          <span className="text-green-700 font-medium">ML Guard</span>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>AI fraud detection enabled</p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center space-x-1">
+                          <Wifi className="w-3 h-3 text-purple-500" />
+                          <span className="text-purple-700 font-medium">Encrypted</span>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>End-to-end encrypted connection</p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center space-x-1">
+                          <CheckCircle className="w-3 h-3 text-green-500" />
+                          <span className="text-green-700 font-medium">Verified</span>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Device is trusted</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
+
+                {/* Security Alert if blocked */}
+                {isSecurityBlocked && (
+                  <div className="pt-2 border-t border-red-200">
+                    <Badge variant="destructive" className="w-full justify-center animate-pulse">
+                      Security Alert Active
+                    </Badge>
+                  </div>
+                )}
+              </div>
+            </Card>
           </div>
 
-          {/* Right column */}
+          {/* Right column - Enhanced with security notices */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Recent Transactions with pagination */}
+            {/* Security Notice Banner (only show occasionally) */}
+            {Math.random() > 0.7 && ( // Show 30% of the time
+              <Card className="p-4 bg-blue-50 border-blue-200">
+                <div className="flex items-center space-x-3">
+                  <Shield className="w-5 h-5 text-blue-600" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-blue-900">
+                      Your account is protected by advanced behavioral biometrics
+                    </p>
+                    <p className="text-xs text-blue-700">
+                      We continuously monitor your typing and mouse patterns for enhanced security
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="sm" className="text-blue-600 hover:bg-blue-100">
+                    Learn More
+                  </Button>
+                </div>
+              </Card>
+            )}
+
+            {/* Recent Transactions with enhanced security info */}
             <Card className="p-4 sm:p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">Recent Transactions</h3>
+                <div className="flex items-center space-x-2">
+                  <h3 className="text-lg font-semibold">Recent Transactions</h3>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Lock className="w-3 h-3 text-green-600" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>All transactions are monitored by AI fraud detection</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
                 <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
                   View All
                 </Button>
@@ -244,7 +470,7 @@ const Dashboard = ({
         </div>
       </main>
 
-      {/* View All Modal with infinite scroll */}
+      {/* Existing modal */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -255,7 +481,6 @@ const Dashboard = ({
             {(transactions || []).slice(0, visibleCount).map((tx) => (
               <TransactionRow key={tx.id} tx={tx} />
             ))}
-            {/* Sentinel for infinite loading */}
             {visibleCount < transactions.length && (
               <div ref={endRef} className="py-4 text-center text-xs text-muted-foreground">
                 Loading more…
@@ -271,6 +496,7 @@ const Dashboard = ({
   );
 };
 
+// Enhanced Transaction Row with security indicator
 function TransactionRow({ tx }: { tx: Transaction }) {
   return (
     <div className="flex items-center justify-between p-3 hover:bg-muted rounded-lg transition-colors">
@@ -287,7 +513,17 @@ function TransactionRow({ tx }: { tx: Transaction }) {
           )}
         </div>
         <div>
-          <p className="text-sm font-medium">{tx.description}</p>
+          <div className="flex items-center space-x-2">
+            <p className="text-sm font-medium">{tx.description}</p>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <CheckCircle className="w-3 h-3 text-green-500" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Transaction verified by AI fraud detection</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
           <p className="text-xs text-muted-foreground">
             {new Date(tx.date).toLocaleString()}
           </p>

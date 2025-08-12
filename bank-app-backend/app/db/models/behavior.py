@@ -1,3 +1,4 @@
+# --- File: bank-app-backend/app/db/models/behavior.py ---
 from sqlalchemy import Column, Integer, String, Float, DateTime
 from sqlalchemy.dialects.postgresql import UUID # Use the specific UUID type for PostgreSQL
 from sqlalchemy.sql import func
