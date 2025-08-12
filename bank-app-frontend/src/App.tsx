@@ -12,7 +12,7 @@ import RegistrationDetailsPage from "./pages/RegistrationDetailsPage";
 import RestorationDetailsPage from "./pages/RestorationDetailsPage";
 import FidoSeedKeyRegistrationPage from "./pages/FidoSeedKeyRegistrationPage";
 import DeviceVerificationPage from "./pages/DeviceVerificationPage";
-import DashboardPage from "./pages/Dashboard";
+import DashboardPage from "./pages/DashboardPage";
 import SignatureRegistrationPage from "./pages/SignatureRegistartionPage";
 import FidoSeedKeyRestorationPage from "./pages/FidoSeedKeyRestorationPage";
 import LoginPage from "./pages/LoginPage";
