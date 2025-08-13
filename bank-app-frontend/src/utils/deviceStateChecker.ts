@@ -1,4 +1,4 @@
-// const CHECKER_URL = 'http://localhost:5000';
+// const CHECKER_URL = 'http://localhost:5050';
 
 // interface DeviceState {
 //   current_hash: string;
@@ -169,7 +169,7 @@
 // export { checkDeviceState, saveDeviceState, loadDeviceState, checkWindowsHelloAvailability, storeKeyInIndexedDB, resetIndexedDB };
 
 
-const CHECKER_URL = 'http://localhost:5000';
+const CHECKER_URL = 'http://localhost:5050';
 
 interface DeviceState {
   current_hash: string;
@@ -421,7 +421,7 @@ async function checkDeviceState(): Promise<DeviceState | null> {
 
 async function checkWindowsHelloAvailability(): Promise<boolean> {
   try {
-    const response = await fetch(`${CHECKER_URL}/check_hello_availability`, {
+    const response = await fetch(`${CHECKER_URL}/check_availability`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });

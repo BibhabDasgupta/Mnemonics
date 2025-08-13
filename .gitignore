@@ -35,3 +35,4 @@ bank-app-backend/app/core/__pycache__
 bank-app-backend/export_git_files.py 
 bank-app-backend/git_files_export.txt
 bank-app-backend/venv
+venv/
