@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { useSecurityContext } from "@/context/SecurityContext";
 import { useLocationContext } from "@/context/LocationContext";
+import { AuthService } from "@/services/authService";
 
 interface Transaction {
   id: string;
@@ -71,23 +72,94 @@ const Dashboard = ({
   // Security context and new security state
   const { isSecurityBlocked } = useSecurityContext();
   
-  // ✅ ADD: Location context integration
+  // Location context integration
   const { 
     hasLocationPermission, 
     isTracking, 
     lastValidation,
+    userFriendlyLocation,
     requestPermission,
     startTracking 
   } = useLocationContext();
 
-  const [lastLoginTime] = useState(new Date().toISOString());
-  const [deviceInfo] = useState({
-    browser: navigator.userAgent.includes('Chrome') ? 'Chrome' : 
-             navigator.userAgent.includes('Firefox') ? 'Firefox' : 
-             navigator.userAgent.includes('Safari') ? 'Safari' : 'Unknown',
-    os: navigator.platform,
-    location: 'Mumbai, India', // In real app, get from geolocation/IP
+  // ✅ FIX: Better OS detection
+  const getOS = () => {
+    const ua = navigator.userAgent;
+    const platform = navigator.platform;
+    
+    // More specific detection
+    if (ua.includes("Win")) return "Windows";
+    if (ua.includes("Mac") || platform.includes("Mac")) return "macOS";
+    if (ua.includes("Linux") && !ua.includes("Android")) return "Linux";
+    if (/Android/.test(ua)) return "Android";
+    if (/iPhone|iPad|iPod/.test(ua)) return "iOS";
+    if (ua.includes("CrOS")) return "Chrome OS";
+    
+    return platform || "Unknown";
+  };
+
+  // ✅ FIX: Better browser detection
+  const getBrowser = () => {
+    const ua = navigator.userAgent;
+    
+    if (ua.includes("Edg/")) return "Edge";
+    if (ua.includes("Chrome/") && !ua.includes("Edg/")) return "Chrome";
+    if (ua.includes("Firefox/")) return "Firefox";
+    if (ua.includes("Safari/") && !ua.includes("Chrome/")) return "Safari";
+    if (ua.includes("Opera/") || ua.includes("OPR/")) return "Opera";
+    
+    return "Unknown";
+  };
+
+  // ✅ UPDATE: Enhanced device info state
+  const [lastLoginTime, setLastLoginTime] = useState<string | null>(null);
+  const [deviceInfo, setDeviceInfo] = useState({
+    browser: getBrowser(),
+    os: getOS(),
+    location: 'Loading...'
   });
+
+  // ✅ UPDATE: Enhanced data loading effect
+  useEffect(() => {
+    const loadUserData = async () => {
+      console.log('🔧 [Dashboard] Loading user data...');
+      console.log('🌍 [Dashboard] Current userFriendlyLocation:', userFriendlyLocation);
+      
+      // Load last login time with better fallback
+      let loginTime = AuthService.getLastLoginTime();
+      if (!loginTime) {
+        // Check if we have a stored session start
+        const sessionStart = AuthService.getCurrentSessionStart();
+        if (!sessionStart) {
+          // Create a session start time and store it
+          const now = new Date().toISOString();
+          AuthService.storeLoginData({
+            customer_id: 'current_user',
+            last_login: now,
+            login_location: userFriendlyLocation,
+            device_info: `${getBrowser()} on ${getOS()}`
+          });
+          loginTime = now;
+        } else {
+          loginTime = sessionStart;
+        }
+      }
+      setLastLoginTime(loginTime);
+
+      // ✅ UPDATE: Better device info with real data
+      const updatedDeviceInfo = {
+        browser: getBrowser(),
+        os: getOS(),
+        location: userFriendlyLocation !== 'Location unavailable' ? userFriendlyLocation : 'Loading...'
+      };
+      
+      console.log('🔧 [Dashboard] Updated device info:', updatedDeviceInfo);
+      setDeviceInfo(updatedDeviceInfo);
+    };
+
+    loadUserData();
+  }, [userFriendlyLocation]); // Re-run when location changes
+
   const [securityStatus] = useState({
     behavioralMonitoring: true,
     deviceTrusted: true,
@@ -130,7 +202,10 @@ const Dashboard = ({
     }
   }, [open, transactions.length]);
 
-  const formatLastLogin = (timestamp: string) => {
+  // ✅ UPDATE: Enhanced login time formatting
+  const formatLastLogin = (timestamp: string | null) => {
+    if (!timestamp) return 'Unknown';
+    
     const date = new Date(timestamp);
     const now = new Date();
     const diffMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
@@ -138,7 +213,15 @@ const Dashboard = ({
     if (diffMinutes < 1) return 'Just now';
     if (diffMinutes < 60) return `${diffMinutes}m ago`;
     if (diffMinutes < 1440) return `${Math.floor(diffMinutes / 60)}h ago`;
-    return date.toLocaleDateString();
+    if (diffMinutes < 10080) return `${Math.floor(diffMinutes / 1440)}d ago`;
+    
+    // For older dates, show actual date
+    return date.toLocaleDateString('en-IN', { 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   return (
@@ -182,7 +265,7 @@ const Dashboard = ({
                       <CheckCircle className="w-3 h-3 text-green-500" />
                       <span>End-to-end encryption</span>
                     </div>
-                    {/* ✅ ADD: Location security status in header tooltip */}
+                    {/* Location security status in header tooltip */}
                     <div className="flex items-center space-x-1">
                       <CheckCircle className={`w-3 h-3 ${hasLocationPermission ? 'text-green-500' : 'text-yellow-500'}`} />
                       <span>{hasLocationPermission ? 'Location tracking active' : 'Location permission pending'}</span>
@@ -281,7 +364,7 @@ const Dashboard = ({
               </div>
             </Card>
 
-            {/* Enhanced Security Information Card with Location */}
+            {/* ✅ UPDATE: Enhanced Security Information Card */}
             <Card className="p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-md font-semibold">Security Info</h3>
@@ -289,36 +372,54 @@ const Dashboard = ({
               </div>
               
               <div className="space-y-3 text-xs">
-                {/* Last Login */}
+                {/* ✅ FIX: Last Login with better display */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <Clock className="w-3 h-3 text-muted-foreground" />
                     <span className="text-muted-foreground">Last login</span>
                   </div>
-                  <span className="font-medium">{formatLastLogin(lastLoginTime)}</span>
+                  <span className="font-medium" title={lastLoginTime ? new Date(lastLoginTime).toLocaleString() : 'Unknown'}>
+                    {formatLastLogin(lastLoginTime)}
+                  </span>
                 </div>
 
-                {/* Device Info */}
+                {/* ✅ FIX: Device Info with browser only */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <Smartphone className="w-3 h-3 text-muted-foreground" />
                     <span className="text-muted-foreground">Device</span>
                   </div>
-                  <span className="font-medium">{deviceInfo.browser}</span>
+                  <span className="font-medium" title={`${deviceInfo.browser} on ${deviceInfo.os}`}>
+                    {deviceInfo.browser}
+                  </span>
                 </div>
 
-                {/* Location */}
+                {/* ✅ FIX: OS Display */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Smartphone className="w-3 h-3 text-muted-foreground" />
+                    <span className="text-muted-foreground">OS</span>
+                  </div>
+                  <span className="font-medium">
+                    {deviceInfo.os}
+                  </span>
+                </div>
+
+                {/* ✅ FIX: Real Location Display */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <MapPin className="w-3 h-3 text-muted-foreground" />
                     <span className="text-muted-foreground">Location</span>
                   </div>
-                  <span className="font-medium">
-                    {lastValidation?.location?.city || deviceInfo.location}
+                  <span className="font-medium" title={`Source: ${lastValidation?.location?.source || 'GPS'}`}>
+                    {userFriendlyLocation !== 'Location unavailable' && 
+                     userFriendlyLocation !== 'GPS Location, GPS Location' ? 
+                     userFriendlyLocation : 
+                     'Resolving...'}
                   </span>
                 </div>
 
-                {/* ✅ ADD: Enhanced Security Features Status Grid */}
+                {/* Enhanced Security Features Status Grid */}
                 <div className="pt-2 border-t border-border">
                   <div className="grid grid-cols-2 gap-2">
                     <Tooltip>
@@ -357,7 +458,7 @@ const Dashboard = ({
                       </TooltipContent>
                     </Tooltip>
 
-                    {/* ✅ ADD: Location status in security grid */}
+                    {/* Location status in security grid */}
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <div className="flex items-center space-x-1">
@@ -374,7 +475,7 @@ const Dashboard = ({
                   </div>
                 </div>
 
-                {/* ✅ ADD: Location permission request UI */}
+                {/* Location permission request UI */}
                 {!hasLocationPermission && (
                   <div className="pt-2 border-t border-border">
                     <Button 
@@ -398,7 +499,7 @@ const Dashboard = ({
                   </div>
                 )}
 
-                {/* ✅ ADD: Location validation status alerts */}
+                {/* Location validation status alerts */}
                 {lastValidation && lastValidation.is_suspicious && (
                   <div className="pt-2 border-t border-red-200">
                     <Badge variant="destructive" className="w-full justify-center text-xs animate-pulse">
@@ -407,7 +508,7 @@ const Dashboard = ({
                   </div>
                 )}
 
-                {/* ✅ ADD: Location tracking status indicator */}
+                {/* Location tracking status indicator */}
                 {hasLocationPermission && isTracking && (
                   <div className="pt-2 border-t border-green-200">
                     <div className="flex items-center justify-center space-x-1 text-green-700">
@@ -431,7 +532,7 @@ const Dashboard = ({
 
           {/* Right column - Enhanced with security notices */}
           <div className="lg:col-span-2 space-y-6">
-            {/* ✅ ADD: Location-based security notice */}
+            {/* Location-based security notice */}
             {lastValidation && lastValidation.distance_km > 10 && !lastValidation.is_suspicious && (
               <Card className="p-4 bg-amber-50 border-amber-200">
                 <div className="flex items-center space-x-3">
@@ -621,7 +722,7 @@ function TransactionRow({ tx }: { tx: Transaction }) {
         )}
       </span>
     </div>
-  );
+ );
 }
 
 export default Dashboard;

@@ -36,7 +36,7 @@ export const TransactionModal = ({ isOpen, onClose, onTransactionSuccess }: Tran
     
     const { toast } = useToast();
     
-    // ✅ ADD: Location context integration
+    // Location context integration
     const { validateCurrentLocation, hasLocationPermission, lastValidation } = useLocationContext();
 
     // Effect to fetch the biometric state when the modal opens
@@ -71,9 +71,9 @@ export const TransactionModal = ({ isOpen, onClose, onTransactionSuccess }: Tran
         }
     }, [isOpen, toast]);
 
-    // ✅ ADD: Enhanced transaction handler with location validation
+    // Enhanced transaction handler with location validation
     const handleTransaction = async () => {
-        // ✅ ADD: Location validation before transaction
+        // Location validation before transaction
         console.log('🌍 [TransactionModal] Validating location before transaction');
         const locationResult = await validateCurrentLocation();
         setLocationValidation(locationResult);
@@ -144,7 +144,7 @@ export const TransactionModal = ({ isOpen, onClose, onTransactionSuccess }: Tran
 
             const result = await response.json();
 
-            // ✅ ADD: Enhanced success message with location info
+            // Enhanced success message with location info
             let successMessage = "Transaction completed successfully.";
             if (result.fraud_prediction) {
                 successMessage += " Note: This transaction was flagged for review.";
@@ -174,8 +174,8 @@ export const TransactionModal = ({ isOpen, onClose, onTransactionSuccess }: Tran
         setAmount("");
         setError("");
         setBiometricHash(null); // Reset hash on close
-        setLocationValidation(null); // ✅ ADD: Reset location validation
-        setShowLocationWarning(false); // ✅ ADD: Reset location warning
+        setLocationValidation(null); // Reset location validation
+        setShowLocationWarning(false); // Reset location warning
         onClose();
     };
 
@@ -185,7 +185,7 @@ export const TransactionModal = ({ isOpen, onClose, onTransactionSuccess }: Tran
                 <DialogHeader>
                     <DialogTitle className="flex items-center space-x-2">
                         <span>Send Money</span>
-                        {/* ✅ ADD: Security indicator */}
+                        {/* Security indicator */}
                         <div className="flex items-center space-x-1">
                             <Shield className="w-4 h-4 text-green-600" />
                             {hasLocationPermission && (
@@ -198,7 +198,7 @@ export const TransactionModal = ({ isOpen, onClose, onTransactionSuccess }: Tran
                     </DialogDescription>
                 </DialogHeader>
 
-                {/* ✅ ADD: Location warning alert */}
+                {/* Location warning alert */}
                 {showLocationWarning && locationValidation && (
                     <Alert className="border-amber-200 bg-amber-50">
                         <AlertTriangle className="h-4 w-4 text-amber-600" />
@@ -213,7 +213,7 @@ export const TransactionModal = ({ isOpen, onClose, onTransactionSuccess }: Tran
                     </Alert>
                 )}
 
-                {/* ✅ ADD: Security status display */}
+                {/* Security status display */}
                 <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <span className="text-sm font-medium text-gray-700">Security Status:</span>
                     <div className="flex items-center space-x-2">
@@ -259,7 +259,7 @@ export const TransactionModal = ({ isOpen, onClose, onTransactionSuccess }: Tran
                     </div>
                 </div>
 
-                {/* ✅ ADD: Enhanced location details */}
+                {/* Enhanced location details */}
                 {locationValidation && locationValidation.location && (
                     <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                         <div className="flex items-center space-x-2 mb-2">

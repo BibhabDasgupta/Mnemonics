@@ -21,13 +21,58 @@ export class LocationService {
   private static lastKnownLocation: LocationData | null = null;
   private static watchId: number | null = null;
   
+  // ✅ Reverse geocoding function for GPS coordinates
+  static async reverseGeocode(latitude: number, longitude: number): Promise<{city: string, country: string} | null> {
+    try {
+      // Using a free reverse geocoding service
+      const response = await fetch(
+        `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+      );
+      
+      if (!response.ok) {
+        throw new Error('Reverse geocoding failed');
+      }
+      
+      const data = await response.json();
+      console.log('🌍 [LocationService] Reverse geocoding result:', data);
+      
+      return {
+        city: data.city || data.locality || data.principalSubdivision || 'Unknown City',
+        country: data.countryName || 'Unknown Country'
+      };
+      
+    } catch (error) {
+      console.error('🌍 [LocationService] Reverse geocoding error:', error);
+      
+      // Fallback: Try with another service
+      try {
+        const fallbackResponse = await fetch(
+          `https://geocode.xyz/${latitude},${longitude}?json=1`
+        );
+        
+        if (fallbackResponse.ok) {
+          const fallbackData = await fallbackResponse.json();
+          return {
+            city: fallbackData.city || 'Unknown City',
+            country: fallbackData.country || 'Unknown Country'
+          };
+        }
+      } catch (fallbackError) {
+        console.error('🌍 [LocationService] Fallback geocoding also failed:', fallbackError);
+      }
+      
+      return null;
+    }
+  }
+
+  // ✅ FIX: Make getCurrentLocation async
   static async getCurrentLocation(): Promise<LocationData | null> {
     if (!navigator.geolocation) {
       console.log('🌍 [LocationService] Geolocation not supported');
       return null;
     }
     
-    return new Promise((resolve) => {
+    return new Promise(async (resolve) => {
       const options = {
         enableHighAccuracy: true,
         timeout: 10000,
@@ -35,7 +80,7 @@ export class LocationService {
       };
       
       navigator.geolocation.getCurrentPosition(
-        (position) => {
+        async (position) => { // ✅ FIX: Make success callback async
           const location: LocationData = {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
@@ -45,6 +90,28 @@ export class LocationService {
           
           this.lastKnownLocation = location;
           console.log('🌍 [LocationService] GPS location obtained:', location);
+          
+          // ✅ FIX: Now properly await the reverse geocoding
+          try {
+            console.log('🌍 [LocationService] Starting reverse geocoding...');
+            const geocodedLocation = await this.reverseGeocode(location.latitude, location.longitude);
+            if (geocodedLocation) {
+              console.log('🌍 [LocationService] Location resolved to:', geocodedLocation);
+              // Store the geocoded info with the location
+              (location as any).city = geocodedLocation.city;
+              (location as any).country = geocodedLocation.country;
+            } else {
+              console.log('🌍 [LocationService] Reverse geocoding returned null');
+              (location as any).city = 'GPS Location';
+              (location as any).country = 'GPS Location';
+            }
+          } catch (error) {
+            console.error('🌍 [LocationService] Error during reverse geocoding:', error);
+            // Fallback values if geocoding fails
+            (location as any).city = 'GPS Location';
+            (location as any).country = 'GPS Location';
+          }
+
           resolve(location);
         },
         (error) => {
@@ -82,6 +149,7 @@ export class LocationService {
     }
   }
   
+  // ✅ UPDATE: Enhanced location tracking with geocoding
   static startLocationTracking(): void {
     if (!navigator.geolocation || this.watchId !== null) {
       return;
@@ -94,13 +162,25 @@ export class LocationService {
     };
     
     this.watchId = navigator.geolocation.watchPosition(
-      (position) => {
+      async (position) => { // ✅ FIX: Make callback async for geocoding
         const location: LocationData = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           accuracy: position.coords.accuracy,
           timestamp: Date.now()
         };
+        
+        // ✅ ADD: Reverse geocode for continuous tracking too
+        try {
+          const geocodedLocation = await this.reverseGeocode(location.latitude, location.longitude);
+          if (geocodedLocation) {
+            (location as any).city = geocodedLocation.city;
+            (location as any).country = geocodedLocation.country;
+            console.log('🌍 [LocationService] Tracking location updated:', `${geocodedLocation.city}, ${geocodedLocation.country}`);
+          }
+        } catch (error) {
+          console.error('🌍 [LocationService] Tracking geocoding error:', error);
+        }
         
         this.lastKnownLocation = location;
         console.log('🌍 [LocationService] Location updated:', location);
