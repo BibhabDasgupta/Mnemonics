@@ -22,7 +22,7 @@ const SignatureVerificationPage = () => {
   const navigate = useNavigate();
   const { phoneNumber, customerId, setError } = useAppContext();
   
-  // ✅ ADD: Enhanced location context integration
+  // Enhanced location context integration
   const { 
     hasLocationPermission, 
     isTracking, 
@@ -211,7 +211,7 @@ const SignatureVerificationPage = () => {
           </div>
         )}
 
-        {/* ✅ ADD: Location Security Details Card */}
+        {/* Location Security Details Card */}
         {lastValidation && (
           <div className="max-w-2xl mx-auto mb-6">
             <Card className="p-6">
