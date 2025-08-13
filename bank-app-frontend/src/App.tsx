@@ -14,7 +14,7 @@ import FidoSeedKeyRegistrationPage from "./pages/FidoSeedKeyRegistrationPage";
 import DeviceVerificationPage from "./pages/DeviceVerificationPage";
 import DashboardPage from "./pages/Dashboard";
 import SignatureRegistrationPage from "./pages/SignatureRegistartionPage";
-import FidoSeedKeyRestorationPage from "./pages/FidoSeedkeyRestorationPage";
+import FidoSeedKeyRestorationPage from "./pages/FidoSeedKeyRegistrationPage";
 import LoginPage from "./pages/LoginPage";
 import RestorationPhonePage from "./pages/RestorationPhonePage";
 import SignatureVerificationPage from "./pages/SignatureVerificationPage";
