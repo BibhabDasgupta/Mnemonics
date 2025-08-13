@@ -116,3 +116,6 @@ class SeedkeyVerificationRequest(BaseModel):
     customer_id: str
     challenge: str
     public_key: str
+
+UserCreate = CustomerCreate
+UserResponse = Customer

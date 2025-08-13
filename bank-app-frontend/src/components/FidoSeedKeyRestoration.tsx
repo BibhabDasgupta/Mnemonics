@@ -221,7 +221,7 @@ const FidoSeedKeyRestoration = ({
       // console.log('handleVerifyWords: Checking device state');
       const deviceState = await checkDeviceState();
       if (!deviceState) {
-        throw new Error('Failed to fetch device state. Ensure checker service is running on http://localhost:5000.');
+        throw new Error('Failed to fetch device state. Ensure checker service is running on http://localhost:5050.');
       }
 
       // console.log('handleVerifyWords: Saving device state');
