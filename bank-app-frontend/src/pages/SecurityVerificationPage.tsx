@@ -77,7 +77,7 @@ const SecurityVerificationPage = () => {
           <div className="flex items-center space-x-3">
             <img src={bankLogo} alt="GlowBank" className="w-8 h-8" />
             <div>
-              <h1 className="text-lg font-bold text-gray-900">GlowBank Security</h1>
+              <h1 className="text-lg font-bold text-gray-900">Bank App Security</h1>
               <p className="text-xs text-gray-600">Account Protection Active</p>
             </div>
           </div>
