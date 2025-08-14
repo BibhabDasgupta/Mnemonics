@@ -17,7 +17,7 @@ const LandingPage = ({ onNavigation }: LandingPageProps) => {
             className="w-20 h-20 mx-auto mb-4"
           />
           <h1 className="text-3xl font-bold text-foreground mb-2">
-            Welcome to GlowBank
+            Welcome to the Bank App
           </h1>
           <p className="text-muted-foreground">
             Your trusted digital banking partner

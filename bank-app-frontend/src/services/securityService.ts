@@ -21,11 +21,16 @@ interface SecurityAlert {
   decision_score?: number;
   recommendations: string[];
   blocked: boolean;
+  transactionDetails?: {
+    type: string;
+    features: string[];
+    timestamp: string;
+  };
 }
 
 export class SecurityService {
   private static readonly API_BASE = 'http://localhost:8000/api/v1';
-  
+
   static async verifyBehavior(metrics: {
     customer_unique_id: string;
     flight_avg: number;
@@ -98,4 +103,28 @@ export class SecurityService {
       blocked: true
     };
   }
+
+  // ✅ ADD THIS METHOD for transaction fraud alerts
+  static createTransactionAlert(fraudDetails: any): SecurityAlert {
+  return {
+    id: `tx_alert_${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    riskLevel: fraudDetails.risk_level || 'HIGH',
+    confidence: fraudDetails.confidence || 95,
+    anomalyType: fraudDetails.anomaly_type || 'Transaction Anomaly',
+    decision_score: fraudDetails.decision_score,
+    recommendations: fraudDetails.recommendations || [
+      'Transaction blocked due to suspicious pattern',
+      'Complete biometric re-authentication to proceed',
+      'Contact support if this transaction is legitimate',
+      'Review recent account activity'
+    ],
+    blocked: true,
+    transactionDetails: {
+      type: 'TRANSACTION_FRAUD',
+      features: fraudDetails.features_used || [],
+      timestamp: new Date().toISOString()
+    }
+  };
+}
 }

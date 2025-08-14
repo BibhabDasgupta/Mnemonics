@@ -231,7 +231,7 @@ const Dashboard = ({
           <div className="flex items-center space-x-3">
             <img src={bankLogo} alt="GlowBank" className="w-9 h-9" />
             <div>
-              <h1 className="text-lg font-bold text-foreground">GlowBank</h1>
+              <h1 className="text-lg font-bold text-foreground">Bank</h1>
               <p className="text-xs text-muted-foreground hidden sm:block">
                 Welcome back, {customerName || "User"}!
               </p>

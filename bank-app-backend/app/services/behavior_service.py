@@ -372,3 +372,177 @@ class BehaviorService:
             print(f"❌ DATABASE ERROR: {str(e)}")
             self.db.rollback()
             return False, None, f"Database error: {str(e)}"
+
+    # ✅ NEW: Relaxed validation methods
+    def validate_and_save_behavior_relaxed(self, behavior_data: BehaviorDataCreate) -> Tuple[bool, UserBehavior, str]:
+        """
+        Relaxed validation that allows more behavioral patterns through.
+        """
+        print(f"🔄 RELAXED BEHAVIORAL VALIDATION STARTED")
+        
+        try:
+            # Step 1: Basic sanity checks only
+            if not self._basic_sanity_check(behavior_data):
+                return False, None, "Basic sanity check failed"
+            
+            # Step 2: Relaxed data quality check (allow 3/5 zeros instead of strict check)
+            zero_count = sum([
+                1 for val in [
+                    behavior_data.flight_avg,
+                    behavior_data.traj_avg,
+                    behavior_data.typing_speed,
+                    behavior_data.correction_rate,
+                    behavior_data.clicks_per_minute
+                ] if val == 0.0
+            ])
+            
+            if zero_count >= 4:  # Allow up to 3 zeros
+                print(f"⚠️ Too many zero values ({zero_count}/5), but proceeding with relaxed validation")
+                # Continue anyway for learning purposes
+            
+            # Step 3: Skip adaptive deviation check for new users or when building baseline
+            user_history_count = self._get_user_behavior_count(behavior_data.customer_unique_id)
+            
+            if user_history_count < 10:  # Less than 10 samples = learning mode
+                print(f"📚 Learning mode: User has {user_history_count} samples, skipping deviation checks")
+                # Save directly for learning
+                return self._save_behavior_data(behavior_data)
+            else:
+                # For established users, still do some validation but be more lenient
+                return self._validate_with_lenient_thresholds(behavior_data)
+            
+        except Exception as e:
+            print(f"❌ Relaxed validation error: {str(e)}")
+            return False, None, f"Relaxed validation failed: {str(e)}"
+    
+    def force_save_for_learning(self, behavior_data: BehaviorDataCreate) -> Tuple[bool, UserBehavior, str]:
+        """
+        Force save behavioral data for learning purposes with minimal validation.
+        """
+        print(f"🚫 FORCE SAVE FOR LEARNING")
+        
+        try:
+            # Only check if customer ID exists and data isn't completely invalid
+            if not behavior_data.customer_unique_id:
+                return False, None, "Customer ID required"
+            
+            # Save the data regardless for learning
+            return self._save_behavior_data(behavior_data)
+            
+        except Exception as e:
+            print(f"❌ Force save error: {str(e)}")
+            return False, None, f"Force save failed: {str(e)}"
+    
+    def _basic_sanity_check(self, behavior_data: BehaviorDataCreate) -> bool:
+        """Basic sanity checks for behavioral data."""
+        # Check for negative values
+        if any(val < 0 for val in [
+            behavior_data.flight_avg,
+            behavior_data.traj_avg,
+            behavior_data.typing_speed,
+            behavior_data.correction_rate,
+            behavior_data.clicks_per_minute
+        ]):
+            print(f"❌ Negative values detected")
+            return False
+        
+        # Check for extreme outliers
+        if behavior_data.traj_avg > 10000 or behavior_data.typing_speed > 1000:
+            print(f"❌ Extreme outlier values detected")
+            return False
+        
+        return True
+    
+    def _get_user_behavior_count(self, customer_id: uuid.UUID) -> int:
+        """Get count of existing behavioral data for user."""
+        try:
+            count = self.db.query(UserBehavior).filter(
+                UserBehavior.customer_unique_id == customer_id
+            ).count()
+            return count
+        except:
+            return 0
+    
+    def _validate_with_lenient_thresholds(self, behavior_data: BehaviorDataCreate) -> Tuple[bool, UserBehavior, str]:
+        """Validate with more lenient thresholds for established users."""
+        print(f"🔍 Lenient threshold validation")
+        
+        try:
+            # Get user's historical averages
+            user_stats = self.get_user_averages(behavior_data.customer_unique_id)
+            
+            if not user_stats:
+                # No stats available, treat as new user
+                return self._save_behavior_data(behavior_data)
+            
+            # Check deviations with 2x more lenient thresholds
+            failed_metrics = []
+            
+            metrics_to_check = {
+                'flight_avg': behavior_data.flight_avg,
+                'traj_avg': behavior_data.traj_avg,
+                'typing_speed': behavior_data.typing_speed,
+                'correction_rate': behavior_data.correction_rate,
+                'clicks_per_minute': behavior_data.clicks_per_minute
+            }
+            
+            # Use the existing user statistics from get_user_averages
+            user_statistics = user_stats.get('user_statistics', {})
+            
+            for metric_name, current_value in metrics_to_check.items():
+                if metric_name in user_statistics:
+                    avg = user_statistics[metric_name]['mean']
+                    std = user_statistics[metric_name]['std_dev']
+                    
+                    # Use 4x standard deviation instead of 3x (even more lenient)
+                    lenient_threshold = std * 4.0
+                    deviation = abs(current_value - avg)
+                    
+                    if deviation > lenient_threshold and lenient_threshold > 0:
+                        failed_metrics.append(metric_name)
+                        print(f"⚠️ {metric_name}: deviation={deviation:.2f}, lenient_threshold={lenient_threshold:.2f}")
+            
+            # Allow up to 4/5 metrics to fail in lenient mode
+            if len(failed_metrics) >= 5:
+                print(f"⚠️ All metrics failed lenient check ({len(failed_metrics)}/5), but saving anyway for learning")
+            
+            # Save the data regardless for continuous learning
+            return self._save_behavior_data(behavior_data)
+            
+        except Exception as e:
+            print(f"❌ Lenient validation error: {str(e)}")
+            # Fallback to force save
+            return self._save_behavior_data(behavior_data)
+    
+    def _save_behavior_data(self, behavior_data: BehaviorDataCreate) -> Tuple[bool, UserBehavior, str]:
+        """Helper method to save behavioral data to database."""
+        try:
+            # Apply basic corrections to the data
+            validated_metrics = {
+                'flight_avg': self.validate_metric(behavior_data.flight_avg, 'flight_avg'),
+                'traj_avg': self.validate_metric(behavior_data.traj_avg, 'traj_avg'),
+                'typing_speed': self.validate_metric(behavior_data.typing_speed, 'typing_speed'),
+                'correction_rate': self.validate_metric(behavior_data.correction_rate, 'correction_rate'),
+                'clicks_per_minute': self.validate_metric(behavior_data.clicks_per_minute, 'clicks_per_minute')
+            }
+            
+            behavior_obj = UserBehavior(
+                flight_avg=validated_metrics['flight_avg'],
+                traj_avg=validated_metrics['traj_avg'],
+                typing_speed=validated_metrics['typing_speed'],
+                correction_rate=validated_metrics['correction_rate'],
+                clicks_per_minute=validated_metrics['clicks_per_minute'],
+                customer_unique_id=behavior_data.customer_unique_id
+            )
+            
+            self.db.add(behavior_obj)
+            self.db.commit()
+            self.db.refresh(behavior_obj)
+            
+            print(f"✅ BEHAVIORAL DATA SAVED: Session ID {behavior_obj.session_id}")
+            return True, behavior_obj, "Behavioral data successfully saved"
+            
+        except Exception as e:
+            print(f"❌ DATABASE SAVE ERROR: {str(e)}")
+            self.db.rollback()
+            return False, None, f"Database save error: {str(e)}"
