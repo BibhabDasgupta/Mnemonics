@@ -17,7 +17,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getOrSetTerminalId } from "@/utils/terminalId";
 import { useToast } from "@/components/ui/use-toast";
 import { useLocationContext } from '@/context/LocationContext';
+import { useSecurityContext } from '@/context/SecurityContext';
+import { SecurityService } from '@/services/securityService';
 import { MapPin, Shield, AlertTriangle } from 'lucide-react';
+import type { TransactionData } from '@/context/SecurityContext';
 
 interface TransactionModalProps {
     isOpen: boolean;
@@ -38,6 +41,9 @@ export const TransactionModal = ({ isOpen, onClose, onTransactionSuccess }: Tran
     
     // Location context integration
     const { validateCurrentLocation, hasLocationPermission, lastValidation } = useLocationContext();
+    
+    // Security context integration for fraud detection
+    const { triggerTransactionAlert } = useSecurityContext();
 
     // Effect to fetch the biometric state when the modal opens
     useEffect(() => {
@@ -71,7 +77,7 @@ export const TransactionModal = ({ isOpen, onClose, onTransactionSuccess }: Tran
         }
     }, [isOpen, toast]);
 
-    // Enhanced transaction handler with location validation
+    // Enhanced transaction handler with fraud detection integration
     const handleTransaction = async () => {
         // Location validation before transaction
         console.log('🌍 [TransactionModal] Validating location before transaction');
@@ -123,6 +129,8 @@ export const TransactionModal = ({ isOpen, onClose, onTransactionSuccess }: Tran
                 throw new Error("Authentication token not found. Please log in again.");
             }
 
+            console.log('🔒 [TransactionModal] Initiating transaction with fraud detection');
+            
             const response = await fetch("http://localhost:8000/api/v1/transactions/create", {
                 method: "POST",
                 headers: {
@@ -143,27 +151,86 @@ export const TransactionModal = ({ isOpen, onClose, onTransactionSuccess }: Tran
             }
 
             const result = await response.json();
+            console.log('🔒 [TransactionModal] Transaction response:', result);
 
-            // Enhanced success message with location info
-            let successMessage = "Transaction completed successfully.";
-            if (result.fraud_prediction) {
-                successMessage += " Note: This transaction was flagged for review.";
+            // ✅ ENHANCED FRAUD DETECTION INTEGRATION
+            if (result.fraud_prediction && result.blocked) {
+                console.log('🚨 [TransactionModal] Fraud detected - triggering security alert');
+                
+                // Prepare transaction data for retry
+                const transactionData: TransactionData = {
+                    recipient_account_number: recipient,
+                    amount: parsedAmount,
+                    terminal_id: terminalId,
+                    biometric_hash: biometricHash
+                };
+                
+                console.log('💳 [TransactionModal] Prepared transaction data for retry:', {
+                    recipient: transactionData.recipient_account_number,
+                    amount: transactionData.amount,
+                    terminal: transactionData.terminal_id,
+                    hasBiometricHash: !!transactionData.biometric_hash
+                });
+                
+                // Transaction was blocked due to fraud detection - pass transaction data
+                const securityAlert = SecurityService.createTransactionAlert(result.fraud_details);
+                triggerTransactionAlert(securityAlert, transactionData); // Pass transaction data
+                
+                // Close modal before showing security alert
+                handleClose();
+                
+                // Show immediate feedback
+                toast({
+                    title: "Transaction Blocked",
+                    description: "Suspicious activity detected. You will be redirected to security verification where you can retry after verification.",
+                    variant: "destructive",
+                });
+                
+                return; // Exit early - don't continue with success flow
             }
-            if (locationResult?.is_suspicious) {
-                successMessage += " Location verification was completed.";
+
+            // ✅ SUCCESSFUL TRANSACTION HANDLING
+            if (result.status === "Transaction successful") {
+                onTransactionSuccess(result.new_balance);
+                handleClose();
+                
+                // Enhanced success message with location info
+                let successMessage = "Transaction completed successfully!";
+                if (locationResult?.is_suspicious) {
+                    successMessage += " Location verification was completed.";
+                }
+                
+                // Show success message
+                toast({
+                    title: "Success",
+                    description: successMessage,
+                    variant: "default",
+                });
+                
+                // ✅ FRAUD PROBABILITY WARNING (for high-risk but not blocked transactions)
+                if (result.fraud_probability && result.fraud_probability > 0.3) {
+                    toast({
+                        title: "Security Notice",
+                        description: `Transaction completed but flagged for review (${(result.fraud_probability * 100).toFixed(1)}% risk score)`,
+                        variant: "destructive",
+                    });
+                }
+            } else {
+                throw new Error(result.message || 'Transaction failed');
             }
-
-            toast({
-                title: "Success",
-                description: successMessage,
-                variant: result.fraud_prediction ? 'destructive' : 'default',
-            });
-
-            onTransactionSuccess(result.new_balance);
-            handleClose();
 
         } catch (err: any) {
-            setError(err.message || "An unexpected error occurred.");
+            console.error('❌ [TransactionModal] Transaction error:', err);
+            
+            // Enhanced error handling
+            const errorMessage = err.message || "An unexpected error occurred.";
+            setError(errorMessage);
+            
+            toast({
+                title: "Transaction Failed",
+                description: errorMessage,
+                variant: "destructive",
+            });
         } finally {
             setIsLoading(false);
         }
@@ -185,16 +252,19 @@ export const TransactionModal = ({ isOpen, onClose, onTransactionSuccess }: Tran
                 <DialogHeader>
                     <DialogTitle className="flex items-center space-x-2">
                         <span>Send Money</span>
-                        {/* Security indicator */}
+                        {/* Enhanced security indicator */}
                         <div className="flex items-center space-x-1">
                             <Shield className="w-4 h-4 text-green-600" />
                             {hasLocationPermission && (
                                 <MapPin className="w-4 h-4 text-blue-600" />
                             )}
+                            <Badge variant="outline" className="text-xs">
+                                AI Protected
+                            </Badge>
                         </div>
                     </DialogTitle>
                     <DialogDescription>
-                        Enter the recipient's details to make a transfer. Your device's security state and location will be verified.
+                        Enter the recipient's details to make a transfer. Your device's security state, location, and transaction patterns will be verified using AI fraud detection.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -213,7 +283,7 @@ export const TransactionModal = ({ isOpen, onClose, onTransactionSuccess }: Tran
                     </Alert>
                 )}
 
-                {/* Security status display */}
+                {/* Enhanced security status display */}
                 <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <span className="text-sm font-medium text-gray-700">Security Status:</span>
                     <div className="flex items-center space-x-2">
@@ -232,6 +302,9 @@ export const TransactionModal = ({ isOpen, onClose, onTransactionSuccess }: Tran
                                  locationValidation ? "Location Verified" : "Location Check"}
                             </Badge>
                         )}
+                        <Badge variant="outline" className="text-xs">
+                            Fraud AI
+                        </Badge>
                     </div>
                 </div>
 
@@ -276,6 +349,17 @@ export const TransactionModal = ({ isOpen, onClose, onTransactionSuccess }: Tran
                     </div>
                 )}
 
+                {/* AI Fraud Protection Notice */}
+                <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+                    <div className="flex items-center space-x-2 mb-1">
+                        <Shield className="w-4 h-4 text-green-600" />
+                        <span className="text-sm font-medium text-green-900">AI Fraud Protection</span>
+                    </div>
+                    <div className="text-xs text-green-700">
+                        This transaction will be analyzed by our machine learning fraud detection system in real-time.
+                    </div>
+                </div>
+
                 {error && <p className="text-sm text-center text-red-500 pb-2">{error}</p>}
                 
                 <DialogFooter>
@@ -291,7 +375,7 @@ export const TransactionModal = ({ isOpen, onClose, onTransactionSuccess }: Tran
                             (locationValidation?.is_suspicious && locationValidation?.action === 'blocked')
                         }
                     >
-                        {isLoading ? "Sending..." : "Send Money"}
+                        {isLoading ? "Analyzing & Sending..." : "Send Money"}
                     </Button>
                 </DialogFooter>
             </DialogContent>
