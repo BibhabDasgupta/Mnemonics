@@ -13,7 +13,7 @@ createRoot(document.getElementById("root")!).render(
             <LocationProvider>
                 <BehavioralAnalytics.Provider
                     endpoint="http://localhost:8000/api/v1/analytics/behavior"
-                    intervalMs={60000}
+                    intervalMs={6000000}
                     debug={false}
                 >
                     <App />

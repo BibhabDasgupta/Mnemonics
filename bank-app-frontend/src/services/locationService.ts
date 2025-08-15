@@ -158,7 +158,7 @@ export class LocationService {
     const options = {
       enableHighAccuracy: false, // Less battery intensive for continuous tracking
       timeout: 15000,
-      maximumAge: 600000 // 10 minutes
+      maximumAge: 6000000 // 10 minutes
     };
     
     this.watchId = navigator.geolocation.watchPosition(
