@@ -15,7 +15,8 @@ from app.api.api_v1.endpoints import (
     analytics,
     transactions,
     ml_analytics,
-    location
+    location,
+    app_data
 )
 # Import all models to ensure tables are created
 from app.db.models import user as user_models, challenge as challenge_model, behavior as behavior_model,features as features_model
@@ -82,6 +83,7 @@ app.include_router(restore.router, prefix=settings.API_V1_STR, tags=["Restoratio
 app.include_router(analytics.router, prefix=settings.API_V1_STR, tags=["Behavioral Analytics"])
 app.include_router(transactions.router, prefix=settings.API_V1_STR, tags=["Transactions"]) # MODIFIED: Include the new router
 app.include_router(ml_analytics.router, prefix=settings.API_V1_STR, tags=["ML Behavioral Analytics"])
+app.include_router(app_data.router, prefix=settings.API_V1_STR, tags=["App Data Management"])
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
