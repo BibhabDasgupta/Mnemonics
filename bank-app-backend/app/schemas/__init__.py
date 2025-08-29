@@ -13,7 +13,7 @@ from .user import (
     SeedkeyVerificationRequest,
     AppAccessRevokeRequest
 )
-from .transaction import (
+from .transactions import (
     TransactionCreate, 
     TransactionResponse, 
     TransactionCreateRequest,

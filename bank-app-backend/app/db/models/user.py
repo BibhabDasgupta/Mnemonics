@@ -6,11 +6,13 @@ from app.db.base import Base
 
 class Account(Base):
     __tablename__ = "account"
-    # MODIFIED: account_number is now the primary key. The auto-incrementing id is removed.
     account_number = Column(String, primary_key=True, index=True)
     customer_id = Column(String, unique=True, nullable=False, index=True)
     account_type = Column(String, nullable=False, default="Savings")
-    balance = Column(Numeric(10, 2), nullable=False, default=0.00)            
+    balance = Column(Numeric(10, 2), nullable=False, default=0.00)     
+    atm_pin_hash = Column(String, nullable=True)
+    pin_attempts = Column(Integer, default=0, nullable=False)
+    pin_locked_until = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     transactions = relationship("Transaction", back_populates="account", cascade="all, delete-orphan")
@@ -18,7 +20,6 @@ class Account(Base):
 class Transaction(Base):
     __tablename__ = "transactions"
     id = Column(Integer, primary_key=True, index=True)
-    # MODIFIED: Foreign key now references account.account_number
     account_number = Column(String, ForeignKey("account.account_number"), nullable=False)
     terminal_id = Column(String, index=True, nullable=False)
     date = Column(DateTime(timezone=True), server_default=func.now())
@@ -26,6 +27,8 @@ class Transaction(Base):
     amount = Column(Numeric(10, 2), nullable=False)
     type = Column(String, nullable=False)  # 'credit' or 'debit'
     is_fraud = Column(Boolean, default=False, nullable=False)
+    is_reauth_transaction = Column(Boolean, default=False, nullable=False)
+    auth_method = Column(String, nullable=True)
 
     account = relationship("Account", back_populates="transactions")
 
@@ -62,5 +65,9 @@ class AppData(Base):
     last_logged_in_time = Column(DateTime(timezone=True), nullable=True)
     other_details = Column(JSONB, nullable=True, default='[]')
     no_of_logged_in_devices = Column(Integer, default=0, nullable=False)
+    last_restored_at = Column(DateTime(timezone=True), nullable=True)
+    is_restoration_limited = Column(Boolean, default=False, nullable=False)
+    restoration_daily_limit = Column(Numeric(10, 2), default=5000.00, nullable=False)
+    restoration_limit_expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

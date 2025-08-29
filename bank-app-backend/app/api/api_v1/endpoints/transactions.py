@@ -1,7 +1,7 @@
 # --- File: app/api/api_v1/endpoints/transactions.py ---
 
 """
-FastAPI Transactions Endpoint — Refactored for production
+FastAPI Transactions Endpoint â€" Refactored for production
 - Enhanced with fraud detection and blocking capabilities
 - Supports re-authentication bypass for FIDO2 verified transactions
 """
@@ -20,9 +20,13 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.base import get_db
 from app.db.models.user import Account, Transaction, AppData
-from app.schemas.transaction import TransactionCreateRequest
+from app.schemas.transactions import TransactionCreateRequest
 from app.services import feature_service
 from app.services.fraud_service import fraud_predictor
+from app.services.pin_verification_service import PinVerificationService
+from app.schemas.transactions import PinVerificationRequest, PinVerificationResponse
+from app.services.restoration_limit_service import RestorationLimitService
+
 
 # -----------------------------------------------------------------------------
 # Router & Logger
@@ -159,7 +163,7 @@ async def get_current_customer(
 
 
 # -----------------------------------------------------------------------------
-# Main Transaction Endpoint - UPDATED WITH RE-AUTH BYPASS
+# Main Transaction Endpoint 
 # -----------------------------------------------------------------------------
 @router.post("/transactions/create")
 def create_transaction(
@@ -168,14 +172,7 @@ def create_transaction(
     current_customer: AppData = Depends(get_current_customer),
     db: Session = Depends(get_db),
 ):
-    """Execute a transfer, run a fraud assessment, and schedule feature updates.
-
-    Design:
-    - Pre-transaction checks ensure accounts exist and balance covers amount.
-    - Enhanced fraud predictor can block transactions when anomalies are detected.
-    - Re-authenticated transactions have relaxed fraud detection or bypass entirely.
-    - Background tasks refresh rolling features post-commit.
-    """
+    """Execute a transfer with enhanced PIN + FIDO2 authentication support"""
     sender_customer_id: str = current_customer.customer_id
 
     try:
@@ -200,30 +197,103 @@ def create_transaction(
     if sender_account.balance < transaction_amount:
         raise HTTPException(status_code=400, detail="Insufficient funds")
 
+    # --- RESTORATION LIMIT CHECKS ---------------------------------------------
+    logger.info(f"Checking restoration limits for customer: {sender_customer_id}")
+    
+    # Check restoration status
+    is_restoration_allowed, validation_message = RestorationLimitService.validate_transaction_against_limits(
+        db=db,
+        customer_id=sender_customer_id,
+        transaction_amount=transaction_amount
+    )
+    
+    if not is_restoration_allowed:
+        logger.warning(f"Transaction blocked due to restoration limits: {sender_customer_id} - {validation_message}")
+        
+        # Get detailed restoration info for response
+        restoration_info = RestorationLimitService.get_restoration_info(db, sender_customer_id)
+
+        # Create blocked transaction record for audit
+        blocked_transaction = Transaction(
+            account_number=sender_account.account_number,
+            terminal_id=request.terminal_id,
+            description=f"BLOCKED Transfer to {recipient_account.account_number} - Restoration limit exceeded",
+            amount=-transaction_amount,
+            type="blocked",
+            is_fraud=False,  # This is a policy block, not fraud
+        )
+        
+        try:
+            db.add(blocked_transaction)
+            db.commit()
+            logger.info(f"Restoration limit block recorded: tx_id={blocked_transaction.id}")
+        except Exception as exc:
+            logger.exception(f"Failed to record blocked transaction: {exc}")
+            db.rollback()
+        
+        return {
+            "status": "Transaction blocked",
+            "new_balance": None,
+            "blocked": True,
+            "block_reason": "restoration_limit",
+            "restoration_info": restoration_info,
+            "message": validation_message,
+            "fraud_prediction": False,  # This is not fraud detection
+            "fraud_probability": None
+        }
+    
+    logger.info(f"Restoration limits check passed: {validation_message}")
+
+    # --- CHECK FOR RE-AUTHENTICATION FLAGS -------------------------------------
+    is_reauth = getattr(request, 'is_reauth_transaction', False) or False
+    pin_verified = getattr(request, 'pin_verified', False) or False
+    original_alert_id = getattr(request, 'original_fraud_alert_id', None)
+
+    # --- ENHANCED VALIDATION FOR RE-AUTHENTICATED TRANSACTIONS -----------------
+    if is_reauth:
+        logger.info(
+            f"Re-authenticated transaction validation: customer={sender_customer_id} pin_verified={pin_verified} alert_id={original_alert_id or 'N/A'}"
+        )
+        
+        # Check if PIN verification is required and completed
+        if not pin_verified:
+            logger.warning(f"Re-auth transaction rejected - PIN not verified: customer={sender_customer_id}")
+            raise HTTPException(
+                status_code=400, 
+                detail="Re-authenticated transaction requires PIN verification. Please verify your ATM PIN first."
+            )
+            
+        # Verify ATM PIN is set for this account
+        if not sender_account.atm_pin_hash:
+            logger.warning(f"Re-auth transaction rejected - no PIN set: customer={sender_customer_id}")
+            raise HTTPException(
+                status_code=400,
+                detail="ATM PIN not set for this account. Please contact your bank to set up PIN-based authentication."
+            )
+        
+        logger.info(f"Re-auth transaction validation passed: customer={sender_customer_id}")
+
     # --- Enhanced Fraud Prediction Step ----------------------------------------
     is_fraud_prediction: bool = False
     fraud_probability: float = -1.0  # sentinel for "not computed"
     fraud_details: Optional[Dict] = None
     fraud_detection_bypassed: bool = False
 
-    # ✅ CHECK FOR RE-AUTHENTICATION FLAGS
-    is_reauth = getattr(request, 'is_reauth_transaction', False) or False
-    original_alert_id = getattr(request, 'original_fraud_alert_id', None)
-    
     try:
         logger.info(
-            "🔒 Fraud pipeline start: customer=%s terminal=%s amount=%s is_reauth=%s alert_id=%s",
+            "Fraud pipeline start: customer=%s terminal=%s amount=%s is_reauth=%s pin_verified=%s alert_id=%s",
             sender_customer_id,
             request.terminal_id,
             transaction_amount,
             is_reauth,
+            pin_verified,
             original_alert_id or 'N/A'
         )
 
-        # ✅ BYPASS FRAUD DETECTION FOR RE-AUTHENTICATED TRANSACTIONS
-        if is_reauth and REAUTH_BYPASS_FRAUD_DETECTION:
+        # --- BYPASS FRAUD DETECTION FOR PROPERLY RE-AUTHENTICATED TRANSACTIONS
+        if is_reauth and pin_verified and REAUTH_BYPASS_FRAUD_DETECTION:
             logger.info(
-                "🔒 FRAUD DETECTION BYPASSED: Re-authenticated transaction allowed. customer=%s amount=%s alert_id=%s",
+                "FRAUD DETECTION BYPASSED: PIN + FIDO2 re-authenticated transaction allowed. customer=%s amount=%s alert_id=%s",
                 sender_customer_id,
                 transaction_amount,
                 original_alert_id or 'unknown'
@@ -233,7 +303,7 @@ def create_transaction(
             fraud_detection_bypassed = True
         else:
             # Continue with normal fraud detection pipeline
-            logger.info("🔒 Running normal fraud detection pipeline (not re-authenticated)")
+            logger.info("Running normal fraud detection pipeline (not properly re-authenticated)")
             
             current_features: Dict[str, float] = feature_service.get_current_features_for_customer_and_terminal(
                 db, sender_customer_id, request.terminal_id
@@ -261,7 +331,7 @@ def create_transaction(
             else:
                 # Debug prediction first
                 debug_info = fraud_predictor.debug_prediction(current_features)
-                logger.info(f"🔍 DEBUG INFO: {debug_info}")
+                logger.info(f"DEBUG INFO: {debug_info}")
                 
                 # Get actual prediction
                 fraud_probability = float(fraud_predictor.predict(current_features))
@@ -271,21 +341,22 @@ def create_transaction(
                 is_fraud_prediction = fraud_probability > effective_threshold
                 
                 logger.info(
-                    "Fraud prediction complete: prob=%.6f threshold=%.3f is_fraud=%s is_reauth=%s suspicious=%d",
+                    "Fraud prediction complete: prob=%.6f threshold=%.3f is_fraud=%s is_reauth=%s pin_verified=%s suspicious=%d",
                     fraud_probability,
                     effective_threshold,
                     is_fraud_prediction,
                     is_reauth,
+                    pin_verified,
                     validation.suspicious_count,
                 )
 
-                # Manual override logic (only for non-reauth transactions)
-                if not is_reauth:
+                # Manual override logic (only for non-reauth or incomplete auth transactions)
+                if not (is_reauth and pin_verified):
                     tx_amount = current_features.get("TX_AMOUNT", 0)
                     avg_amount = current_features.get("CUSTOMER_ID_AVG_AMOUNT_30DAY_WINDOW", 0)
                     
                     if avg_amount > 0 and tx_amount / avg_amount > 15:  # 15x higher than average
-                        logger.warning(f"🚨 MANUAL OVERRIDE: Transaction amount {tx_amount} is {tx_amount/avg_amount:.1f}x higher than average {avg_amount}")
+                        logger.warning(f"MANUAL OVERRIDE: Transaction amount {tx_amount} is {tx_amount/avg_amount:.1f}x higher than average {avg_amount}")
                         fraud_probability = 0.95
                         is_fraud_prediction = True
 
@@ -301,9 +372,9 @@ def create_transaction(
                         "features_used": list(current_features.keys()),
                         "recommendations": [
                             "Transaction blocked due to suspicious pattern",
-                            "Verify your identity to proceed",
-                            "Contact support if this transaction is legitimate",
-                            "Review recent account activity"
+                            "Verify your ATM PIN and biometric authentication to proceed",
+                            "Both PIN and fingerprint verification are required",
+                            "Contact support if you continue to experience issues"
                         ],
                         "transaction_details": {
                             "amount": float(transaction_amount),
@@ -317,18 +388,21 @@ def create_transaction(
                             "transaction_amount": tx_amount,
                             "threshold_used": effective_threshold,
                             "is_reauth_transaction": is_reauth,
+                            "pin_verified": pin_verified,
                             "original_fraud_alert_id": original_alert_id,
-                            "manual_override": tx_amount / avg_amount > 15 if avg_amount > 0 else False
+                            "manual_override": tx_amount / avg_amount > 15 if avg_amount > 0 else False,
+                            "auth_required": "PIN + FIDO2" if is_fraud_prediction else "Standard"
                         }
                     }
                     
                     logger.warning(
-                        "FRAUD DETECTED - Transaction blocked: customer=%s amount=%s prob=%.6f risk=%s is_reauth=%s ratio=%.1fx",
+                        "FRAUD DETECTED - Transaction blocked: customer=%s amount=%s prob=%.6f risk=%s is_reauth=%s pin_verified=%s ratio=%.1fx",
                         sender_customer_id,
                         transaction_amount,
                         fraud_probability,
                         fraud_details["risk_level"],
                         is_reauth,
+                        pin_verified,
                         tx_amount / avg_amount if avg_amount > 0 else 0
                     )
 
@@ -345,20 +419,24 @@ def create_transaction(
     # --- Early Return for Blocked Transactions ---------------------------------
     if is_fraud_prediction and fraud_details:
         logger.info(
-            "Transaction BLOCKED due to fraud detection: customer=%s amount=%s is_reauth=%s",
+            "Transaction BLOCKED due to fraud detection: customer=%s amount=%s is_reauth=%s pin_verified=%s",
             sender_customer_id,
             transaction_amount,
-            is_reauth
+            is_reauth,
+            pin_verified
         )
         
         # Create a blocked transaction record for audit purposes
+        auth_method = "pin_and_fido_required" if is_fraud_prediction else "standard"
         blocked_transaction = Transaction(
             account_number=sender_account.account_number,
             terminal_id=request.terminal_id,
-            description=f"BLOCKED Transfer to {recipient_account.account_number} - Fraud detected (reauth: {is_reauth})",
+            description=f"BLOCKED Transfer to {recipient_account.account_number} - Fraud detected (reauth: {is_reauth}, pin: {pin_verified})",
             amount=-transaction_amount,
             type="blocked",
             is_fraud=True,
+            is_reauth_transaction=is_reauth,
+            auth_method=auth_method,
         )
         
         try:
@@ -377,36 +455,49 @@ def create_transaction(
             "fraud_details": fraud_details,
             "blocked": True,
             "is_reauth_transaction": is_reauth,
+            "pin_verified": pin_verified,
             "original_fraud_alert_id": original_alert_id,
-            "message": f"Transaction blocked due to {fraud_details['risk_level'].lower()} risk fraud detection"
+            "auth_required": "PIN + FIDO2",
+            "message": f"Transaction blocked due to {fraud_details['risk_level'].lower()} risk fraud detection. PIN and biometric verification required."
         }
 
     # --- Atomic Transaction Logic (Only for non-fraudulent transactions) -------
     try:
         logger.info(
-            "✅ Executing transfer: from=%s to=%s amount=%s fraud_prob=%.6f is_reauth=%s bypassed=%s",
+            "Executing transfer: from=%s to=%s amount=%s fraud_prob=%.6f is_reauth=%s pin_verified=%s bypassed=%s",
             sender_account.account_number,
             request.recipient_account_number,
             transaction_amount,
             fraud_probability if fraud_probability != -1.0 else 0.0,
             is_reauth,
+            pin_verified,
             fraud_detection_bypassed
         )
 
         sender_account.balance -= transaction_amount
         recipient_account.balance += transaction_amount
 
-        # Add note about re-authentication in transaction description
-        description_suffix = " (Re-authenticated)" if is_reauth else ""
+        # When creating transaction records, include auth method
+        auth_suffix = ""
+        auth_method = "standard"
+        if is_reauth and pin_verified:
+            auth_suffix = " (PIN + FIDO2 Re-authenticated)"
+            auth_method = "pin_and_fido"
+        elif is_reauth:
+            auth_suffix = " (FIDO2 Re-authenticated)"  
+            auth_method = "fido_only"
         
+        # Create transaction records with auth tracking
         db.add(
             Transaction(
                 account_number=sender_account.account_number,
                 terminal_id=request.terminal_id,
-                description=f"Transfer to {recipient_account.account_number}{description_suffix}",
+                description=f"Transfer to {recipient_account.account_number}{auth_suffix}",
                 amount=-transaction_amount,
                 type="debit",
                 is_fraud=False,  # Only non-fraudulent transactions reach here
+                is_reauth_transaction=is_reauth,
+                auth_method=auth_method,
             )
         )
 
@@ -414,10 +505,12 @@ def create_transaction(
             Transaction(
                 account_number=recipient_account.account_number,
                 terminal_id=request.terminal_id,
-                description=f"Transfer from {sender_account.account_number}{description_suffix}",
+                description=f"Transfer from {sender_account.account_number}{auth_suffix}",
                 amount=transaction_amount,
                 type="credit",
                 is_fraud=False,
+                is_reauth_transaction=is_reauth,
+                auth_method=auth_method,
             )
         )
 
@@ -429,13 +522,17 @@ def create_transaction(
 
         db.refresh(sender_account)
         logger.info(
-            "✅ Transaction committed successfully: new_sender_balance=%s is_fraud=%s prob=%.6f is_reauth=%s",
+            "Transaction committed successfully: new_sender_balance=%s is_fraud=%s prob=%.6f is_reauth=%s pin_verified=%s",
             sender_account.balance,
             is_fraud_prediction,
             fraud_probability if fraud_probability != -1.0 else -1.0,
-            is_reauth
+            is_reauth,
+            pin_verified
         )
 
+        # FIXED: Get restoration info for response BEFORE building response
+        restoration_info = RestorationLimitService.get_restoration_info(db, sender_customer_id)
+        
         # Build success response
         response = {
             "status": "Transaction successful",
@@ -445,17 +542,24 @@ def create_transaction(
             "fraud_details": None,
             "blocked": False,
             "is_reauth_transaction": is_reauth,
+            "pin_verified": pin_verified,
             "original_fraud_alert_id": original_alert_id,
             "fraud_detection_bypassed": fraud_detection_bypassed,
-            "message": "Transaction completed successfully" + (" (Re-authenticated)" if is_reauth else "")
+            "auth_method": auth_method,
+            "message": f"Transaction completed successfully{auth_suffix}",
+            "restoration_info": restoration_info if restoration_info.get("is_limited") else None
         }
 
-        # Add notice for re-authenticated transactions
-        if is_reauth:
+        # Add notice for re-authenticated transactions or restoration limits
+        if is_reauth and pin_verified:
+            response["security_notice"] = "Transaction completed after successful PIN and biometric re-authentication"
+        elif is_reauth:
             response["security_notice"] = "Transaction completed after successful biometric re-authentication"
         elif fraud_probability > 0.1:
             response["security_notice"] = f"Transaction flagged for review (risk score: {fraud_probability:.3f})"
-
+        elif restoration_info.get("is_limited"):
+            response["security_notice"] = f"Account under post-restoration limits: {restoration_info['message']}"
+            
         return response
 
     except Exception as exc:
@@ -466,8 +570,7 @@ def create_transaction(
             exc,
         )
         raise HTTPException(status_code=500, detail="An error occurred during the transaction")
-
-
+    
 # Keep your existing test endpoint
 @router.post("/transactions/test-fraud")
 def test_fraud_detection(
@@ -520,3 +623,34 @@ def test_fraud_detection(
             "error": str(exc),
             "recommendation": "ERROR"
         }
+    
+
+@router.post("/transactions/verify-pin", response_model=PinVerificationResponse)
+def verify_atm_pin(
+    request: PinVerificationRequest,
+    current_customer: AppData = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+):
+    """Verify ATM PIN for re-authentication flow"""
+    
+    
+    logger.info(
+        f"PIN verification requested: customer={current_customer.customer_id} alert_id={request.original_fraud_alert_id or 'N/A'}"
+    )
+    
+    # Use PIN verification service
+    verification_result = PinVerificationService.verify_pin(
+        db=db, 
+        customer_id=current_customer.customer_id, 
+        provided_pin=request.atm_pin
+    )
+    
+    # Log verification result
+    if verification_result.verified:
+        logger.info(f"PIN verification successful: customer={current_customer.customer_id}")
+    else:
+        logger.warning(
+            f"PIN verification failed: customer={current_customer.customer_id} message='{verification_result.message}'"
+        )
+    
+    return verification_result

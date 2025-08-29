@@ -9,6 +9,7 @@ from app.db.base import Base, engine
 from app.api.api_v1.endpoints import (
     seedkey_auth,
     accounts,
+    account,
     register,
     restore,
     login,
@@ -33,6 +34,7 @@ app = FastAPI(
 
 # Add to the router includes
 app.include_router(location.router, prefix=settings.API_V1_STR, tags=["Location Tracking"])
+app.include_router(account.router, prefix=settings.API_V1_STR, tags=["Account Management"])
 
 # Also ensure the UserLocation table is created
 from app.services.location_service import UserLocation

@@ -4,11 +4,25 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { TransactionService, TransactionData } from '@/services/transactionService';
 import { useSecurityContext } from '@/context/SecurityContext';
 import { useNavigate } from 'react-router-dom';
-import { Shield, CreditCard, Fingerprint, AlertTriangle, RefreshCw, CheckCircle, User } from 'lucide-react';
+import { 
+  Shield, 
+  CreditCard, 
+  Fingerprint, 
+  AlertTriangle, 
+  RefreshCw, 
+  CheckCircle, 
+  User, 
+  Lock,
+  KeyRound,
+  Eye,
+  EyeOff
+} from 'lucide-react';
 
 interface TransactionRetryProps {
   transactionData: TransactionData;
@@ -16,57 +30,169 @@ interface TransactionRetryProps {
   onCancel: () => void;
 }
 
+type AuthStep = 'pin_entry' | 'pin_verifying' | 'pin_verified' | 'fido_authenticating' | 'transaction_processing' | 'completed' | 'failed';
+
 export const TransactionRetry = ({ transactionData, onSuccess, onCancel }: TransactionRetryProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [authStep, setAuthStep] = useState<'ready' | 'authenticating' | 'processing' | 'completed'>('ready');
+  const [authStep, setAuthStep] = useState<AuthStep>('pin_entry');
+  
+  // PIN-related state
+  const [pinValue, setPinValue] = useState('');
+  const [showPin, setShowPin] = useState(false);
+  const [pinAttempts, setPinAttempts] = useState(0);
+  const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null);
+  
   const { toast } = useToast();
   const { clearAlert, currentAlert } = useSecurityContext();
   const navigate = useNavigate();
 
-  const handleRetryWithAuth = async () => {
+  const handlePinVerification = async () => {
+    if (!pinValue || pinValue.length < 4) {
+      setError('Please enter a valid 4-6 digit PIN');
+      return;
+    }
+
     setIsLoading(true);
     setError('');
-    setAuthStep('ready');
+    setAuthStep('pin_verifying');
 
     try {
-      console.log('🔐 [TransactionRetry] Starting FIDO2 authentication for transaction retry');
+      console.log('PIN verification started');
       
-      // Get the original alert ID from security context if available
-      const originalAlertId = currentAlert?.id;
-      
-      console.log('📋 [TransactionRetry] Transaction details:', {
-        amount: transactionData.amount,
-        recipient: transactionData.recipient_account_number,
-        originalAlertId: originalAlertId || 'N/A'
+      const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
+      if (!token) {
+        throw new Error('Authentication token not found. Please log in again.');
+      }
+
+      const response = await fetch('http://localhost:8000/api/v1/transactions/verify-pin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          atm_pin: pinValue,
+          original_fraud_alert_id: currentAlert?.id
+        }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'PIN verification failed');
+      }
+
+      const result = await response.json();
+
+      if (result.verified) {
+        console.log('PIN verification successful');
+        setAuthStep('pin_verified');
+        setAttemptsRemaining(null);
+        
+        toast({
+          title: "PIN Verified",
+          description: "ATM PIN verified successfully. Please complete biometric authentication.",
+          variant: "default",
+        });
+
+        // Auto-proceed to FIDO2 after short delay
+        setTimeout(() => {
+          handleFIDO2Authentication();
+        }, 1500);
+
+      } else {
+        console.warn('PIN verification failed:', result.message);
+        setAuthStep('pin_entry');
+        setError(result.message);
+        setAttemptsRemaining(result.attempts_remaining);
+        setPinAttempts(prev => prev + 1);
+
+        // Handle lockout
+        if (result.locked_until) {
+          toast({
+            title: "PIN Locked",
+            description: `Too many incorrect attempts. PIN locked until ${new Date(result.locked_until).toLocaleString()}`,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Incorrect PIN",
+            description: result.message,
+            variant: "destructive",
+          });
+        }
+      }
+
+    } catch (err: any) {
+      console.error('PIN verification error:', err);
+      setAuthStep('pin_entry');
       
-      setAuthStep('authenticating');
+      const errorMessage = err.message || "PIN verification failed";
+      setError(errorMessage);
+      
+      toast({
+        title: "PIN Verification Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleFIDO2Authentication = async () => {
+    setAuthStep('fido_authenticating');
+    setError('');
+
+    try {
+      console.log('Starting FIDO2 authentication after PIN verification');
+      
       toast({
         title: "Biometric Authentication Required",
-        description: "Please authenticate using your fingerprint, face, or PIN to continue the transaction.",
+        description: "Please authenticate using your fingerprint, face, or Windows Hello.",
         variant: "default",
       });
 
-      // Pass the original alert ID for audit trail
-      const result = await TransactionService.executeWithFIDO2Auth(transactionData, originalAlertId);
+      const originalAlertId = currentAlert?.id;
 
-      setAuthStep('processing');
+      console.log('Enhanced authentication details:', {
+        amount: transactionData.amount,
+        recipient: transactionData.recipient_account_number,
+        originalAlertId: originalAlertId || 'N/A',
+        pinVerified: true
+      });
 
-      console.log('📊 [TransactionRetry] Transaction result:', {
+      setAuthStep('transaction_processing');
+
+      // Execute transaction with PIN verification flag
+      const enhancedTransactionData = {
+        ...transactionData,
+        is_reauth_transaction: true,
+        pin_verified: true, // Mark that PIN was verified
+        original_fraud_alert_id: originalAlertId
+      };
+
+      const result = await TransactionService.executeWithFIDO2Auth(enhancedTransactionData, originalAlertId);
+
+      console.log('Enhanced authentication result:', {
         status: result.status,
         blocked: result.blocked || false,
         fraudDetectionBypassed: result.fraud_detection_bypassed || false,
-        isReauth: result.is_reauth_transaction || false
+        isReauth: result.is_reauth_transaction || false,
+        pinVerified: result.pin_verified || false,
+        authMethod: result.auth_method || 'unknown'
       });
 
-      // Check for successful transaction (should succeed with fraud detection bypass)
+      // Check for successful transaction
       if (result.status === "Transaction successful") {
         setAuthStep('completed');
         
         let successMessage = `Your transaction has been completed successfully!`;
         if (result.fraud_detection_bypassed) {
-          successMessage += ` (Fraud detection bypassed after authentication)`;
+          successMessage += ` (Fraud detection bypassed after PIN + biometric authentication)`;
+        }
+        if (result.auth_method === 'pin_and_fido') {
+          successMessage += ` Authentication: PIN + Biometric`;
         }
         successMessage += ` New balance: ₹${result.new_balance.toLocaleString()}`;
         
@@ -76,9 +202,11 @@ export const TransactionRetry = ({ transactionData, onSuccess, onCancel }: Trans
           variant: "default",
         });
 
-        console.log('🎉 [TransactionRetry] Transaction completed successfully:', {
+        console.log('Enhanced authentication transaction completed:', {
           newBalance: result.new_balance,
           fraudBypassed: result.fraud_detection_bypassed,
+          authMethod: result.auth_method,
+          pinVerified: result.pin_verified,
           securityNotice: result.security_notice
         });
 
@@ -90,74 +218,56 @@ export const TransactionRetry = ({ transactionData, onSuccess, onCancel }: Trans
         }, 2000);
         
       } else if (result.fraud_prediction && result.blocked) {
-        // This should rarely happen now with fraud detection bypass, but handle just in case
-        setAuthStep('ready');
-        console.error('🚨 [TransactionRetry] Transaction still blocked despite re-authentication:', result);
+        setAuthStep('failed');
+        console.error('Transaction still blocked despite PIN + FIDO2 authentication:', result);
         
         toast({
           title: "Unusual Security Issue",
-          description: "Despite successful authentication, this transaction requires additional review. Please contact support.",
+          description: "Despite successful PIN and biometric authentication, this transaction requires additional review. Please contact support.",
           variant: "destructive",
         });
-        setError("Transaction requires additional security review despite successful authentication. Please contact our support team.");
+        setError("Transaction requires additional security review despite successful PIN and biometric authentication.");
         
       } else {
-        // Handle other failure cases
         throw new Error(result.message || result.detail || 'Transaction failed unexpectedly');
       }
 
     } catch (err: any) {
-      console.error('❌ [TransactionRetry] Authentication/Transaction failed:', err);
-      setAuthStep('ready');
+      console.error('Enhanced authentication failed:', err);
+      setAuthStep('failed');
       
-      const errorMessage = err.message || "Transaction retry failed";
+      const errorMessage = err.message || "Enhanced authentication failed";
       setError(errorMessage);
       
-      // Handle specific error cases with appropriate user messaging
-      if (errorMessage.includes("cancelled") || errorMessage.includes("user cancelled")) {
+      // Handle specific error cases
+      if (errorMessage.includes("cancelled")) {
         toast({
           title: "Authentication Cancelled",
-          description: "Biometric authentication was cancelled. Please try again when ready.",
+          description: "Biometric authentication was cancelled. You can retry when ready.",
           variant: "destructive",
         });
-      } else if (errorMessage.includes("not available") || errorMessage.includes("not supported")) {
+      } else if (errorMessage.includes("not available")) {
         toast({
           title: "Biometric Authentication Unavailable",
           description: "Biometric authentication is not available on this device. Please contact support.",
           variant: "destructive",
         });
-      } else if (errorMessage.includes("Authentication") || 
-                 errorMessage.includes("Session expired") || 
-                 errorMessage.includes("log in") ||
-                 errorMessage.includes("token")) {
+      } else if (errorMessage.includes("Session expired")) {
         toast({
           title: "Session Expired",
           description: "Your session has expired. You will be redirected to login.",
           variant: "destructive",
         });
         
-        // Clear everything and redirect to login after delay
         setTimeout(() => {
           clearAlert();
           document.cookie = 'auth_token=; max-age=0; path=/; Secure; SameSite=Strict';
           navigate('/login', { replace: true });
         }, 2000);
-      } else if (errorMessage.includes("Customer information not found")) {
-        toast({
-          title: "Account Information Missing",
-          description: "Your account information is missing. Please log in again.",
-          variant: "destructive",
-        });
-        
-        setTimeout(() => {
-          clearAlert();
-          navigate('/login', { replace: true });
-        }, 2000);
       } else {
-        // Generic error handling
         toast({
-          title: "Transaction Failed",
-          description: errorMessage.length > 100 ? "An error occurred during transaction processing. Please try again." : errorMessage,
+          title: "Enhanced Authentication Failed",
+          description: errorMessage.length > 100 ? "An error occurred during enhanced authentication. Please try again." : errorMessage,
           variant: "destructive",
         });
       }
@@ -168,25 +278,62 @@ export const TransactionRetry = ({ transactionData, onSuccess, onCancel }: Trans
     }
   };
 
+  const resetAuthentication = () => {
+    setAuthStep('pin_entry');
+    setPinValue('');
+    setError('');
+    setIsLoading(false);
+  };
+
   const getStepDisplay = () => {
     switch (authStep) {
-      case 'authenticating':
+      case 'pin_entry':
+        return {
+          icon: <KeyRound className="w-8 h-8 text-blue-500 mx-auto mb-2" />,
+          message: 'Enter your ATM PIN',
+          description: 'First step: Verify your ATM PIN',
+          subDescription: 'Enter the same PIN you use at ATM machines',
+          badgeText: 'PIN Required',
+          badgeVariant: 'outline' as const,
+          bgColor: 'border-blue-200 bg-blue-50'
+        };
+      case 'pin_verifying':
+        return {
+          icon: <RefreshCw className="w-8 h-8 text-blue-500 mx-auto mb-2 animate-spin" />,
+          message: 'Verifying ATM PIN...',
+          description: 'Checking your PIN with bank security',
+          subDescription: 'This may take a few seconds',
+          badgeText: 'Verifying PIN',
+          badgeVariant: 'default' as const,
+          bgColor: 'border-blue-200 bg-blue-50'
+        };
+      case 'pin_verified':
+        return {
+          icon: <CheckCircle className="w-8 h-8 text-green-500 mx-auto mb-2" />,
+          message: 'PIN verified successfully!',
+          description: 'Proceeding to biometric authentication',
+          subDescription: 'Get ready for fingerprint or face authentication',
+          badgeText: 'PIN Verified',
+          badgeVariant: 'default' as const,
+          bgColor: 'border-green-200 bg-green-50'
+        };
+      case 'fido_authenticating':
         return {
           icon: <Fingerprint className="w-8 h-8 text-blue-500 mx-auto mb-2 animate-pulse" />,
           message: 'Waiting for biometric authentication...',
           description: 'Please complete authentication on your device',
           subDescription: 'Use your fingerprint, face, or PIN as prompted',
-          badgeText: 'Authenticating',
+          badgeText: 'Biometric Authentication',
           badgeVariant: 'default' as const,
           bgColor: 'border-blue-200 bg-blue-50'
         };
-      case 'processing':
+      case 'transaction_processing':
         return {
           icon: <RefreshCw className="w-8 h-8 text-blue-500 mx-auto mb-2 animate-spin" />,
-          message: 'Processing transaction...',
-          description: 'Authentication successful, processing your transaction',
-          subDescription: 'Fraud detection bypassed - transaction should complete',
-          badgeText: 'Processing',
+          message: 'Processing secure transaction...',
+          description: 'Both PIN and biometric verified - processing payment',
+          subDescription: 'Fraud detection bypassed with enhanced authentication',
+          badgeText: 'Processing Payment',
           badgeVariant: 'default' as const,
           bgColor: 'border-blue-200 bg-blue-50'
         };
@@ -194,18 +341,28 @@ export const TransactionRetry = ({ transactionData, onSuccess, onCancel }: Trans
         return {
           icon: <CheckCircle className="w-8 h-8 text-green-500 mx-auto mb-2" />,
           message: 'Transaction completed successfully!',
-          description: 'Your transaction has been processed',
+          description: 'Your payment has been processed securely',
           subDescription: 'Redirecting to dashboard...',
           badgeText: 'Completed',
           badgeVariant: 'default' as const,
           bgColor: 'border-green-200 bg-green-50'
         };
+      case 'failed':
+        return {
+          icon: <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-2" />,
+          message: 'Authentication failed',
+          description: 'Unable to complete enhanced authentication',
+          subDescription: 'You can try again or contact support',
+          badgeText: 'Failed',
+          badgeVariant: 'destructive' as const,
+          bgColor: 'border-red-200 bg-red-50'
+        };
       default:
         return {
           icon: <User className="w-8 h-8 text-gray-400 mx-auto mb-2" />,
           message: 'Ready for enhanced authentication',
-          description: 'Biometric verification required to continue',
-          subDescription: 'This will open your device\'s authentication prompt',
+          description: 'PIN + Biometric verification required',
+          subDescription: 'Two-factor authentication for maximum security',
           badgeText: 'Enhanced Security Protocol',
           badgeVariant: 'outline' as const,
           bgColor: 'border-gray-200 bg-gray-50'
@@ -224,9 +381,9 @@ export const TransactionRetry = ({ transactionData, onSuccess, onCancel }: Trans
             <CreditCard className="w-5 h-5 text-blue-600" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold">Continue Transaction</h3>
+            <h3 className="text-lg font-semibold">Enhanced Security Verification</h3>
             <p className="text-sm text-gray-600">
-              Complete your blocked transaction with enhanced verification
+              Complete your blocked transaction with PIN + biometric verification
             </p>
           </div>
         </div>
@@ -249,15 +406,53 @@ export const TransactionRetry = ({ transactionData, onSuccess, onCancel }: Trans
           )}
         </div>
 
-        {/* Security Notice */}
-        <Alert className="border-blue-200 bg-blue-50">
-          <Shield className="h-4 w-4 text-blue-600" />
-          <AlertDescription className="text-blue-800">
-            <strong>Enhanced Security Required:</strong> This transaction requires fresh biometric authentication 
-            due to suspicious pattern detection. Your device will prompt for authentication, and fraud detection 
-            will be bypassed after successful verification.
+        {/* Enhanced Security Notice */}
+        <Alert className="border-amber-200 bg-amber-50">
+          <Shield className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-800">
+            <strong>Enhanced Security Required:</strong> This transaction requires both ATM PIN and biometric 
+            authentication due to suspicious pattern detection. Both authentication methods must be completed 
+            successfully for the transaction to proceed.
           </AlertDescription>
         </Alert>
+
+        {/* PIN Entry Step */}
+        {authStep === 'pin_entry' && (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="atm-pin">ATM PIN</Label>
+              <div className="relative">
+                <Input
+                  id="atm-pin"
+                  type={showPin ? "text" : "password"}
+                  value={pinValue}
+                  onChange={(e) => setPinValue(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="Enter your ATM PIN"
+                  className="pr-10"
+                  maxLength={6}
+                  autoComplete="off"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3"
+                  onClick={() => setShowPin(!showPin)}
+                >
+                  {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500">
+                Enter the same PIN you use at ATM machines (4-6 digits)
+              </p>
+              {attemptsRemaining !== null && (
+                <p className="text-xs text-amber-600">
+                  {attemptsRemaining} attempts remaining before lockout
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Authentication Step Display */}
         <div className={`border-2 border-dashed rounded-lg p-6 text-center transition-all duration-300 ${stepDisplay.bgColor}`}>
@@ -282,9 +477,9 @@ export const TransactionRetry = ({ transactionData, onSuccess, onCancel }: Trans
             <AlertTriangle className="h-4 w-4 text-red-600" />
             <AlertDescription className="text-red-800">
               <strong>Error:</strong> {error}
-              {error.includes("cancelled") && (
+              {error.includes("attempts") && (
                 <p className="mt-2 text-sm">
-                  You can try authentication again when ready.
+                  Please double-check your ATM PIN and try again.
                 </p>
               )}
               {error.includes("support") && (
@@ -298,21 +493,45 @@ export const TransactionRetry = ({ transactionData, onSuccess, onCancel }: Trans
 
         {/* Action Buttons */}
         <div className="flex space-x-3 pt-2">
-          <Button
-            onClick={handleRetryWithAuth}
-            disabled={isLoading || authStep === 'completed'}
-            className="flex-1 flex items-center justify-center space-x-2"
-            variant={authStep === 'completed' ? 'outline' : 'default'}
-            size="lg"
-          >
-            <Fingerprint className="w-4 h-4" />
-            <span>
-              {authStep === 'authenticating' ? 'Authenticating...' :
-               authStep === 'processing' ? 'Processing...' :
-               authStep === 'completed' ? 'Completed ✓' :
-               'Verify & Continue'}
-            </span>
-          </Button>
+          {authStep === 'pin_entry' ? (
+            <Button
+              onClick={handlePinVerification}
+              disabled={isLoading || !pinValue || pinValue.length < 4}
+              className="flex-1 flex items-center justify-center space-x-2"
+              size="lg"
+            >
+              <Lock className="w-4 h-4" />
+              <span>
+                {isLoading ? 'Verifying PIN...' : 'Verify PIN'}
+              </span>
+            </Button>
+          ) : authStep === 'failed' ? (
+            <Button
+              onClick={resetAuthentication}
+              className="flex-1 flex items-center justify-center space-x-2"
+              size="lg"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Try Again</span>
+            </Button>
+          ) : (
+            <Button
+              disabled={true}
+              className="flex-1 flex items-center justify-center space-x-2"
+              variant={authStep === 'completed' ? 'outline' : 'default'}
+              size="lg"
+            >
+              <Fingerprint className="w-4 h-4" />
+              <span>
+                {authStep === 'pin_verifying' ? 'Verifying PIN...' :
+                 authStep === 'pin_verified' ? 'PIN Verified ✓' :
+                 authStep === 'fido_authenticating' ? 'Authenticating...' :
+                 authStep === 'transaction_processing' ? 'Processing...' :
+                 authStep === 'completed' ? 'Completed ✓' :
+                 'Enhanced Authentication'}
+              </span>
+            </Button>
+          )}
           
           <Button
             variant="outline"
@@ -328,11 +547,11 @@ export const TransactionRetry = ({ transactionData, onSuccess, onCancel }: Trans
         {/* Info Text */}
         <div className="text-center">
           <p className="text-xs text-gray-500">
-            Your device will prompt for biometric authentication (Windows Hello, TouchID, or PIN)
+            Enhanced security: ATM PIN verification followed by biometric authentication
           </p>
           {currentAlert && (
             <p className="text-xs text-gray-400 mt-1">
-              After successful authentication, fraud detection will be bypassed for this transaction
+              After successful dual authentication, fraud detection will be bypassed for this transaction
             </p>
           )}
         </div>

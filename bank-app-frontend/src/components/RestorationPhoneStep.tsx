@@ -24,15 +24,43 @@ const RestorationPhoneStep = ({
   error,
   setError,
 }: RestorationPhoneStepProps) => {
-  const [phoneNumber, setPhoneNumber] = useState(initialPhoneNumber || "");
+  // Extract digits from initial phone number if it includes +91
+  const getPhoneDigits = (phone?: string) => {
+    if (!phone) return "";
+    return phone.startsWith("+91") ? phone.slice(3) : phone;
+  };
+
+  const [phoneDigits, setPhoneDigits] = useState(getPhoneDigits(initialPhoneNumber));
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+
+  const handlePhoneDigitsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    // Only allow digits and limit to 10 characters
+    if (/^\d*$/.test(value) && value.length <= 10) {
+      setPhoneDigits(value);
+      setError(""); // Clear error when user starts typing
+    }
+  };
+
+  const getFullPhoneNumber = () => {
+    return `+91${phoneDigits}`;
+  };
 
   const handleRestorationSubmit = async () => {
     setIsLoading(true);
     setError("");
+    
+    // Validate phone number
+    if (phoneDigits.length !== 10) {
+      setError("Please enter a valid 10-digit phone number");
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      const encryptedPhoneNumber = await encrypt(phoneNumber); // Use same encrypt function as registration
+      const fullPhoneNumber = getFullPhoneNumber();
+      const encryptedPhoneNumber = await encrypt(fullPhoneNumber);
       
       const response = await fetch("http://localhost:8000/api/v1/restore/check", {
         method: "POST",
@@ -48,17 +76,17 @@ const RestorationPhoneStep = ({
       }
 
       const data = await response.json();
-      onProceed(data.phone_number, data.status, data.customer_id);
+      onProceed(data.phone_number || fullPhoneNumber, data.status, data.customer_id);
     } catch (err: any) {
       if (err.message.includes("App access is revoked")) {
         setError("Account access revoked. Please visit a branch to re-register.");
-        onProceed(phoneNumber, "revoked");
+        onProceed(getFullPhoneNumber(), "revoked");
       } else if (err.message.includes("not registered")) {
         setError("Phone number not registered. Please register first.");
-        onProceed(phoneNumber, "new");
+        onProceed(getFullPhoneNumber(), "new");
       } else {
         setError(err.message || "Error checking phone number");
-        onProceed(phoneNumber, "error");
+        onProceed(getFullPhoneNumber(), "error");
       }
     } finally {
       setIsLoading(false);
@@ -67,7 +95,7 @@ const RestorationPhoneStep = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (phoneNumber.trim()) {
+    if (phoneDigits.trim() && phoneDigits.length === 10) {
       await handleRestorationSubmit();
     }
   };
@@ -96,26 +124,31 @@ const RestorationPhoneStep = ({
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="phone">Phone Number</Label>
-            <Input
-              id="phone"
-              type="tel"
-              placeholder="Enter your phone number"
-              value={phoneNumber}
-              onChange={(e) => {
-                const value = e.target.value;
-                // Enforce phone number format (e.g., +1234567890 or 1234567890)
-                if (/^\+?\d{0,12}$/.test(value)) {
-                  setPhoneNumber(value);
-                }
-              }}
-              className="h-12"
-              required
-              disabled={isLoading}
-            />
+            <div className="flex gap-2">
+              {/* Country Code - Fixed +91 */}
+              <div className="flex items-center justify-center bg-muted px-3 rounded-md border h-12 min-w-[70px]">
+                <span className="text-foreground font-medium">+91</span>
+              </div>
+              
+              {/* 10-digit phone number input */}
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="Enter 10-digit number"
+                value={phoneDigits}
+                onChange={handlePhoneDigitsChange}
+                className="h-12 flex-1"
+                required
+                disabled={isLoading}
+                maxLength={10}
+                pattern="[0-9]{10}"
+              />
+            </div>
             <p className="text-sm text-muted-foreground">
               Please enter your registered mobile number
             </p>
           </div>
+          
           {error && (
             <div className="space-y-2">
               <p className="text-sm text-red-600">
@@ -134,12 +167,13 @@ const RestorationPhoneStep = ({
               )}
             </div>
           )}
+          
           <Button
             type="submit"
             variant="banking"
             size="xl"
             className="w-full"
-            disabled={isLoading || !phoneNumber.trim()}
+            disabled={isLoading || !phoneDigits.trim() || phoneDigits.length !== 10}
           >
             {isLoading ? (
               <span className="flex items-center gap-2">
