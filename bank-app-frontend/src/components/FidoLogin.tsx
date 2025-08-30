@@ -290,8 +290,8 @@ const FidoLogin = ({ onSuccess, customerName }: FidoLoginProps) => {
           errorMessage = JSON.stringify(err);
         }
       }
-      
-      setError(`Login failed: ${errorMessage}`);
+
+      setError(`Login failed. Please try again.`);
     } finally {
       setIsLoading(false);
     }

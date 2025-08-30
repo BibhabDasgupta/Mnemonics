@@ -1,7 +1,7 @@
 # --- File: app/api/api_v1/endpoints/transactions.py ---
 
 """
-FastAPI Transactions Endpoint â€" Refactored for production
+FastAPI Transactions Endpoint
 - Enhanced with fraud detection and blocking capabilities
 - Supports re-authentication bypass for FIDO2 verified transactions
 """

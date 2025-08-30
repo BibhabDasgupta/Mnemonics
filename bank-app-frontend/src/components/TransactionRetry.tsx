@@ -237,7 +237,6 @@ export const TransactionRetry = ({ transactionData, onSuccess, onCancel }: Trans
       setAuthStep('failed');
       
       const errorMessage = err.message || "Enhanced authentication failed";
-      setError(errorMessage);
       
       // Handle specific error cases
       if (errorMessage.includes("cancelled")) {

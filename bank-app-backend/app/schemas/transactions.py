@@ -17,7 +17,6 @@ class TransactionCreateRequest(BaseModel):
 
 # NEW: PIN verification request schema
 class PinVerificationRequest(BaseModel):
-    customer_id: str = Field(..., description="Customer ID for PIN verification")
     atm_pin: str = Field(..., min_length=4, max_length=6, description="ATM PIN (4-6 digits)")
     original_fraud_alert_id: Optional[str] = Field(None, description="Original fraud alert ID")
 
@@ -35,16 +34,16 @@ class ReauthTransactionRequest(BaseModel):
 
 class TransactionResponse(BaseModel):
     status: str
-    new_balance: float
-    fraud_prediction: bool
+    new_balance: Optional[float] = None
+    fraud_prediction: bool = False
     fraud_probability: Optional[float] = None
-    fraud_details: Optional[dict] = None  
-    blocked: Optional[bool] = None
-    is_reauth_transaction: Optional[bool] = None
-    pin_verified: Optional[bool] = None
+    fraud_details: Optional[dict] = None
+    blocked: bool = False
+    is_reauth_transaction: bool = False
+    pin_verified: bool = False
     auth_method: Optional[str] = None
-    fraud_detection_bypassed: Optional[bool] = None
-    
+    fraud_detection_bypassed: bool = False
+
     class Config:
         from_attributes = True
 
