@@ -4,6 +4,7 @@ from app.db.base import get_db
 from app.schemas.user import PhoneVerificationRequest, CustomerCreate, FidoLoginStartRequest
 from app.services.fido_seedkey_service import start_fido_registration, register_fido_seedkey
 from app.services.otp_service import decrypt_phone_number, check_phone_number, decrypt_data
+from app.services.restoration_limit_service import RestorationLimitService
 from webauthn.helpers import bytes_to_base64url, base64url_to_bytes
 from app.services import signature_service
 from app.db.models.user import AppData, Seedkey, Passkey
@@ -14,6 +15,30 @@ from datetime import datetime
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+def post_restoration_setup(db: Session, customer_id: str) -> dict:
+    """Setup post-restoration security measures"""
+    try:
+        # Activate restoration limits
+        limits_activated = RestorationLimitService.activate_restoration_limits(
+            db=db,
+            customer_id=customer_id
+        )
+        
+        restoration_info = RestorationLimitService.get_restoration_info(db, customer_id)
+        
+        return {
+            "limits_activated": limits_activated,
+            "restoration_info": restoration_info,
+            "security_message": "Post-restoration security limits activated: ₹5,000 transaction limit for 35 hours"
+        }
+        
+    except Exception as e:
+        logger.exception(f"Error setting up post-restoration limits: {e}")
+        return {
+            "limits_activated": False,
+            "error": "Failed to activate restoration limits"
+        }
 
 @router.post("/restore/check")
 async def check_restoration_phone(request: PhoneVerificationRequest, db: Session = Depends(get_db)):
@@ -68,8 +93,6 @@ async def check_restoration_phone(request: PhoneVerificationRequest, db: Session
     except Exception as e:
         logger.error(f"Error checking phone number for restoration: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-
 
 @router.post("/restore/complete")
 async def complete_restoration(customer_data: CustomerCreate, db: Session = Depends(get_db)):
@@ -138,8 +161,6 @@ async def complete_restoration(customer_data: CustomerCreate, db: Session = Depe
         logger.error(f"Error completing restoration: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Restoration failed: {str(e)}")
 
-
-
 @router.post("/restore/fido-start")
 async def fido_start_restoration(data: FidoLoginStartRequest, db: Session = Depends(get_db)):
     try:
@@ -152,7 +173,6 @@ async def fido_start_restoration(data: FidoLoginStartRequest, db: Session = Depe
     except Exception as e:
         logger.error(f"FIDO restoration start failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"FIDO restoration start failed: {str(e)}")
-    
 
 @router.post("/restore/fido-seedkey")
 async def restore_fido_seedkey(data: dict, db: Session = Depends(get_db)):
@@ -203,7 +223,32 @@ async def restore_fido_seedkey(data: dict, db: Session = Depends(get_db)):
         db.add(passkey)
         db.commit()
         
-        return {"status": "FIDO2 and seed key restored successfully"}
+        # ===== NEW: ACTIVATE POST-RESTORATION LIMITS =====
+        logger.info(f"Account restoration completed successfully for customer: {customer_id}")
+        logger.info(f"Activating post-restoration security limits for customer: {customer_id}")
+        
+        # Activate restoration limits
+        restoration_setup = post_restoration_setup(db, customer_id)
+        
+        if restoration_setup["limits_activated"]:
+            logger.info(f"Post-restoration limits activated successfully: {customer_id}")
+        else:
+            logger.warning(f"Failed to activate post-restoration limits: {customer_id}")
+        
+        # Enhanced response with restoration limit information
+        return {
+            "status": "FIDO2 and seed key restored successfully",
+            "customer_id": customer_id,
+            "restoration_completed": True,
+            "restoration_limits": {
+                "activated": restoration_setup["limits_activated"],
+                "limit_amount": 5000,
+                "duration_hours": 35,
+                "message": "For security, transactions are limited to ₹5,000 for the next 35 hours after account restoration."
+            },
+            "restoration_info": restoration_setup.get("restoration_info"),
+            "security_notice": restoration_setup.get("security_message", "Post-restoration security measures applied")
+        }
         
     except HTTPException:
         raise
@@ -211,9 +256,6 @@ async def restore_fido_seedkey(data: dict, db: Session = Depends(get_db)):
         db.rollback()
         logger.error(f"FIDO2 and seed key restoration failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"FIDO2 and seed key restoration failed: {str(e)}")
-
-
-
 
 @router.post("/restore/check-signature")
 async def check_signature(data: dict, db: Session = Depends(get_db)):
@@ -260,9 +302,6 @@ async def check_signature(data: dict, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error checking signature: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error checking signature: {str(e)}")
-
-
-
 
 @router.post("/restore/signature")
 async def verify_signature(data: dict, db: Session = Depends(get_db)):

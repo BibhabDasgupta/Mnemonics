@@ -27,7 +27,18 @@ const PhoneNumberStep = ({
   setError,
   isOTP
 }: PhoneNumberStepProps) => {
-  const [phoneNumber, setPhoneNumber] = useState(initialPhoneNumber || "");
+  // Extract the 10-digit number from initial phone number (remove +91 if present)
+  const getInitialNumber = (phone?: string) => {
+    if (!phone) return "";
+    // Remove +91, 91, or any non-digits and take last 10 digits
+    const digitsOnly = phone.replace(/\D/g, '');
+    if (digitsOnly.startsWith('91') && digitsOnly.length === 12) {
+      return digitsOnly.slice(2);
+    }
+    return digitsOnly.slice(-10);
+  };
+
+  const [phoneDigits, setPhoneDigits] = useState(getInitialNumber(initialPhoneNumber));
   const [otpCode, setOtpCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [ephemeralPublicKey, setEphemeralPublicKey] = useState("");
@@ -35,6 +46,11 @@ const PhoneNumberStep = ({
   const [countdown, setCountdown] = useState(0);
   const navigate = useNavigate();
   const isRestoration = title.includes("Restoration");
+
+  // Get complete phone number with country code
+  const getCompletePhoneNumber = () => {
+    return phoneDigits ? `+91${phoneDigits}` : "";
+  };
 
   const generateEphemeralKey = async () => {
     try {
@@ -66,7 +82,8 @@ const PhoneNumberStep = ({
     setIsLoading(true);
     setError("");
     try {
-      const encryptedPhoneNumber = await encrypt(phoneNumber);
+      const completePhoneNumber = getCompletePhoneNumber();
+      const encryptedPhoneNumber = await encrypt(completePhoneNumber);
       const response = await fetch("http://localhost:8000/api/v1/register/otp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -81,11 +98,10 @@ const PhoneNumberStep = ({
         throw new Error(responseData.detail || "Failed to send OTP");
       }
 
-      setPhoneNumber(responseData.phone_number);
       setOtpSent(true);
       startCountdown();
       setError("OTP sent successfully. Check your phone!");
-      onProceed(responseData.phone_number, responseData.status, responseData.customer_id);
+      onProceed(responseData.phone_number || completePhoneNumber, responseData.status, responseData.customer_id);
     } catch (err: any) {
       if (err.message.includes("already registered")) {
         setError("Phone number already registered. Please proceed to restoration.");
@@ -109,7 +125,8 @@ const PhoneNumberStep = ({
     setError("");
     try {
       const ephemeralPubKey = await generateEphemeralKey();
-      const encryptedPhoneNumber = await encrypt(phoneNumber);
+      const completePhoneNumber = getCompletePhoneNumber();
+      const encryptedPhoneNumber = await encrypt(completePhoneNumber);
       
       const response = await fetch("http://localhost:8000/api/v1/restoration/check", {
         method: "POST",
@@ -126,14 +143,14 @@ const PhoneNumberStep = ({
       }
 
       const data = await response.json();
-      onProceed(data.phone_number, data.status, data.customer_id);
+      onProceed(data.phone_number || completePhoneNumber, data.status, data.customer_id);
     } catch (err: any) {
       if (err.message.includes("App access is revoked")) {
         setError("Account access revoked. Please visit a branch to re-register.");
-        onProceed(phoneNumber, "revoked");
+        onProceed(getCompletePhoneNumber(), "revoked");
       } else if (err.message.includes("Phone number not registered")) {
         setError("Phone number not registered. Please register first.");
-        onProceed(phoneNumber, "new");
+        onProceed(getCompletePhoneNumber(), "new");
       } else {
         setError(err.message || "Error checking phone number");
       }
@@ -146,7 +163,8 @@ const PhoneNumberStep = ({
     setIsLoading(true);
     setError("");
     try {
-      const encryptedPhoneNumber = await encrypt(phoneNumber);
+      const completePhoneNumber = getCompletePhoneNumber();
+      const encryptedPhoneNumber = await encrypt(completePhoneNumber);
       const response = await fetch("http://localhost:8000/api/v1/register/otp/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -167,7 +185,7 @@ const PhoneNumberStep = ({
       setOtpSent(false);
       
       setTimeout(() => {
-        onProceed(responseData.phone_number, "verified", responseData.customer_id);
+        onProceed(responseData.phone_number || completePhoneNumber, "verified", responseData.customer_id);
       }, 0);
       
     } catch (err: any) {
@@ -185,12 +203,19 @@ const PhoneNumberStep = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isRestoration && phoneNumber.trim()) {
+    if (isRestoration && phoneDigits.trim()) {
       await handleRestorationSubmit();
-    } else if (!otpSent && phoneNumber.trim()) {
+    } else if (!otpSent && phoneDigits.trim()) {
       await handleSendOTP();
     } else if ((otpSent || isOTP) && otpCode.trim()) {
       await handleOTPVerification();
+    }
+  };
+
+  const handlePhoneDigitsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, ''); // Remove all non-digits
+    if (value.length <= 10) {
+      setPhoneDigits(value);
     }
   };
 
@@ -213,20 +238,31 @@ const PhoneNumberStep = ({
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="phone">Phone Number</Label>
-            <Input
-              id="phone"
-              type="tel"
-              placeholder="Enter your phone number"
-              value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
-              className="h-12"
-              required
-              disabled={otpSent || isLoading}
-            />
+            <div className="flex gap-2">
+              {/* Country Code - Fixed +91 */}
+              <div className="flex items-center justify-center bg-muted px-3 rounded-md border h-12 min-w-[70px]">
+                <span className="text-foreground font-medium">+91</span>
+              </div>
+              
+              {/* 10-digit phone number input */}
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="Enter 10-digit number"
+                value={phoneDigits}
+                onChange={handlePhoneDigitsChange}
+                className="h-12 flex-1"
+                required
+                disabled={otpSent || isLoading}
+                maxLength={10}
+                pattern="[0-9]{10}"
+              />
+            </div>
             <p className="text-sm text-muted-foreground">
-              Please enter your registered mobile number
+              Please enter your registered 10-digit mobile number
             </p>
           </div>
+          
           {(otpSent || (isOTP && !isRestoration)) && (
             <div className="space-y-2">
               <Label htmlFor="otp">OTP Code</Label>
@@ -236,11 +272,17 @@ const PhoneNumberStep = ({
                   type="text"
                   placeholder="Enter 6-digit OTP"
                   value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, '');
+                    if (value.length <= 6) {
+                      setOtpCode(value);
+                    }
+                  }}
                   className="h-12 flex-1"
                   required
                   disabled={isLoading}
                   maxLength={6}
+                  pattern="[0-9]{6}"
                 />
                 <Button
                   type="button"
@@ -253,15 +295,17 @@ const PhoneNumberStep = ({
                 </Button>
               </div>
               <p className="text-sm text-muted-foreground">
-                Enter the OTP sent to your phone
+                Enter the OTP sent to {getCompletePhoneNumber()}
               </p>
             </div>
           )}
+          
           {error && (
             <p className={`text-sm ${error.includes("successfully") ? "text-green-600" : "text-red-600"}`}>
               {error}
             </p>
           )}
+          
           <Button
             type="submit"
             variant="banking"
@@ -269,8 +313,8 @@ const PhoneNumberStep = ({
             className="w-full"
             disabled={
               isLoading ||
-              (!otpSent && !phoneNumber.trim()) ||
-              ((otpSent || isOTP) && !otpCode.trim())
+              phoneDigits.length !== 10 ||
+              ((otpSent || isOTP) && otpCode.length !== 6)
             }
           >
             {isLoading ? (

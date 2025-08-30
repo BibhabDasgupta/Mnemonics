@@ -118,7 +118,7 @@ const FidoSeedKeyRestoration = ({
       setStep(2);
     } catch (err) {
       console.error('FIDO2 restoration error:', err);
-      setError(`FIDO2 restoration failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setError(`FIDO2 restoration failed`);
     } finally {
       setIsLoading(false);
     }

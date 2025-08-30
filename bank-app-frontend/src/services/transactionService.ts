@@ -9,6 +9,15 @@ export interface TransactionData {
   amount: number;
   terminal_id: string;
   biometric_hash: string;
+  customer_id?: string; // Added for PIN verification
+}
+
+// New interface for PIN verification
+export interface PinVerificationResult {
+  verified: boolean;
+  message: string;
+  attempts_remaining?: number | null;
+  locked_until?: string | null;
 }
 
 export class TransactionService {
@@ -40,10 +49,64 @@ export class TransactionService {
     return await response.json();
   }
 
-  // Re-authenticated transaction execution (bypasses fraud detection)
+  // NEW: PIN verification method
+  static async verifyATMPin(customerId: string, pin: string, originalAlertId?: string): Promise<PinVerificationResult> {
+    const token = this.getAuthToken();
+
+    if (!token) {
+      throw new Error("Authentication token not found. Please log in again.");
+    }
+
+    console.log('🔐 [TransactionService] Verifying ATM PIN for customer:', customerId);
+
+    try {
+      const response = await fetch("http://localhost:8000/api/v1/transactions/verify-pin", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          customer_id: customerId,
+          atm_pin: pin,
+          original_fraud_alert_id: originalAlertId
+        }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error("Authentication expired. Please log in again.");
+        }
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "PIN verification failed.");
+      }
+
+      const result = await response.json();
+      
+      console.log('📊 [TransactionService] PIN verification result:', {
+        verified: result.verified,
+        attemptsRemaining: result.attempts_remaining,
+        lockedUntil: result.locked_until
+      });
+
+      return {
+        verified: result.verified,
+        message: result.message,
+        attempts_remaining: result.attempts_remaining,
+        locked_until: result.locked_until
+      };
+
+    } catch (error) {
+      console.error('❌ [TransactionService] PIN verification error:', error);
+      throw error;
+    }
+  }
+
+  // Enhanced re-authenticated transaction execution (with PIN verification flag)
   static async executeReauthenticatedTransaction(
     transactionData: TransactionData, 
-    originalAlertId?: string
+    originalAlertId?: string,
+    pinVerified: boolean = false
   ): Promise<any> {
     const token = this.getAuthToken();
 
@@ -51,17 +114,19 @@ export class TransactionService {
       throw new Error("Authentication token not found. Please log in again.");
     }
 
-    console.log('💳 [TransactionService] Executing re-authenticated transaction:', {
+    console.log('💳 [TransactionService] Executing enhanced re-authenticated transaction:', {
       amount: transactionData.amount,
       recipient: transactionData.recipient_account_number,
       originalAlertId: originalAlertId || 'N/A',
+      pinVerified: pinVerified,
       bypassFraudDetection: true
     });
 
-    // Add re-authentication flags to bypass fraud detection
+    // Add re-authentication flags including PIN verification status
     const reauthTransactionData = {
       ...transactionData,
       is_reauth_transaction: true,
+      pin_verified: pinVerified,
       original_fraud_alert_id: originalAlertId
     };
 
@@ -86,20 +151,21 @@ export class TransactionService {
     
     // Log successful re-authentication bypass
     if (result.fraud_detection_bypassed) {
-      console.log('✅ [TransactionService] Fraud detection successfully bypassed for re-authenticated transaction');
+      console.log('✅ [TransactionService] Fraud detection successfully bypassed for PIN + FIDO2 re-authenticated transaction');
     }
 
     return result;
   }
 
-  // Complete FIDO2 authentication + re-authenticated transaction
-  static async executeWithFIDO2Auth(transactionData: TransactionData, originalAlertId?: string): Promise<any> {
+  // Enhanced FIDO2 authentication + re-authenticated transaction (with PIN pre-verification)
+  static async executeWithFIDO2Auth(transactionData: TransactionData, originalAlertId?: string, pinVerified: boolean = true): Promise<any> {
     try {
-      console.log('🔐 [TransactionService] Starting FIDO2 authentication for transaction retry');
-      console.log('📋 [TransactionService] Transaction details:', {
+      console.log('🔐 [TransactionService] Starting enhanced FIDO2 authentication for transaction retry');
+      console.log('📋 [TransactionService] Enhanced transaction details:', {
         amount: transactionData.amount,
         recipient: transactionData.recipient_account_number,
-        originalAlertId: originalAlertId || 'N/A'
+        originalAlertId: originalAlertId || 'N/A',
+        pinPreVerified: pinVerified
       });
       
       // Step 1: Perform complete FIDO2 authentication to get fresh token
@@ -108,7 +174,7 @@ export class TransactionService {
         throw new Error(authResult.error || "FIDO2 authentication failed");
       }
 
-      console.log('✅ [TransactionService] FIDO2 authentication successful, executing re-authenticated transaction');
+      console.log('✅ [TransactionService] FIDO2 authentication successful, executing enhanced re-authenticated transaction');
 
       // Step 2: Get fresh biometric hash
       const biometricResult = await this.getFreshBiometricHash();
@@ -124,21 +190,22 @@ export class TransactionService {
         biometric_hash: biometricResult.hash || transactionData.biometric_hash
       };
 
-      console.log('💳 [TransactionService] Updated transaction data prepared:', {
+      console.log('💳 [TransactionService] Enhanced transaction data prepared:', {
         amount: updatedTransactionData.amount,
         recipient: updatedTransactionData.recipient_account_number,
         hasFreshBiometric: !!biometricResult.hash,
-        originalAlertId: originalAlertId || 'N/A'
+        originalAlertId: originalAlertId || 'N/A',
+        pinVerified: pinVerified
       });
 
-      // Step 4: Execute transaction as re-authenticated (bypasses fraud detection)
-      const result = await this.executeReauthenticatedTransaction(updatedTransactionData, originalAlertId);
+      // Step 4: Execute transaction as enhanced re-authenticated (bypasses fraud detection with PIN + FIDO2)
+      const result = await this.executeReauthenticatedTransaction(updatedTransactionData, originalAlertId, pinVerified);
 
       // Step 5: Validate that fraud detection was bypassed
       if (result.fraud_detection_bypassed) {
-        console.log('🎉 [TransactionService] Transaction completed successfully with fraud detection bypass');
+        console.log('🎉 [TransactionService] Transaction completed successfully with PIN + FIDO2 fraud detection bypass');
       } else if (result.is_reauth_transaction) {
-        console.log('✅ [TransactionService] Re-authenticated transaction completed successfully');
+        console.log('✅ [TransactionService] Enhanced re-authenticated transaction completed successfully');
       }
 
       return result;
@@ -148,7 +215,33 @@ export class TransactionService {
     }
   }
 
-  // Complete FIDO2 authentication flow (same as in FidoLogin.tsx)
+  // NEW: Complete PIN + FIDO2 authentication flow
+  static async executeWithEnhancedAuth(
+    transactionData: TransactionData, 
+    originalAlertId?: string
+  ): Promise<any> {
+    try {
+      console.log('🔐 [TransactionService] Starting complete PIN + FIDO2 authentication flow');
+
+      // Get customer info for PIN verification
+      const customerInfo = await loadCustomerInfo();
+      if (!customerInfo || !customerInfo.customerId) {
+        throw new Error('Customer information not found. Please log in again.');
+      }
+
+      const customerId = customerInfo.customerId;
+      
+      // This method assumes PIN has already been verified by the UI component
+      // and is called with pinVerified=true flag
+      return await this.executeWithFIDO2Auth(transactionData, originalAlertId, true);
+      
+    } catch (error) {
+      console.error('❌ [TransactionService] Enhanced authentication failed:', error);
+      throw error;
+    }
+  }
+
+  // Complete FIDO2 authentication flow (same as before)
   private static async performCompleteFIDO2Login(): Promise<{success: boolean, error?: string}> {
     try {
       console.log('🔐 [TransactionService] Starting complete FIDO2 login flow');
@@ -187,7 +280,7 @@ export class TransactionService {
 
       const { challenge, timeout, rpId, allowCredentials, userVerification } = await startResponse.json();
 
-      // Step 2: Prepare authentication options (same as FidoLogin.tsx)
+      // Step 2: Prepare authentication options
       const authOptions = {
         challenge: base64urlToArrayBuffer(challenge),
         timeout,
@@ -210,7 +303,7 @@ export class TransactionService {
 
       console.log('✅ [TransactionService] Biometric credential obtained');
 
-      // Step 4: Prepare auth data (same as FidoLogin.tsx)
+      // Step 4: Prepare auth data
       const responseData = credential.response as AuthenticatorAssertionResponse;
       const authData = {
         id: credential.id,
@@ -247,7 +340,7 @@ export class TransactionService {
 
       console.log('✅ [TransactionService] FIDO2 verified, proceeding to seed key verification...');
 
-      // Step 6: Decrypt private key and derive public key (same as FidoLogin.tsx)
+      // Step 6: Decrypt private key and derive public key
       const symmetricKeyBytes = base64urlToArrayBuffer(symmetric_key);
       if (symmetricKeyBytes.byteLength !== 32) {
         throw new Error(`Invalid symmetric key length: ${symmetricKeyBytes.byteLength} bytes`);
@@ -387,7 +480,7 @@ export class TransactionService {
     }
   }
 
-  // Test transaction endpoint (for debugging)
+  // Test transaction endpoint (enhanced with PIN info)
   static async testTransaction(transactionData: TransactionData): Promise<any> {
     const token = this.getAuthToken();
 

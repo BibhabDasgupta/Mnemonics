@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { checkDeviceState, loadDeviceState, checkWindowsHelloAvailability, loadCustomerInfo, initIndexedDB } from '@/utils/deviceStateChecker';
+import { checkDeviceState, loadDeviceState, checkWindowsHelloAvailability, loadCustomerInfo, initIndexedDB } from '@/utils/deviceStateChecker';
 import { arrayBufferToBase64url, base64urlToArrayBuffer, arrayBufferToHex, hexToArrayBuffer } from '@/utils/crypto';
 import { useNavigate } from 'react-router-dom';
 import { getPublicKey } from '@noble/secp256k1';
@@ -40,6 +41,7 @@ const FidoLogin = ({ onSuccess, customerName }: FidoLoginProps) => {
   const navigate = useNavigate();
   const { setSelectedAccount: setContextSelectedAccount } = useAppContext();
 
+  const showBiometricMismatchError = async () => {
   const showBiometricMismatchError = async () => {
     setShowBiometricMismatchPopup(true);
     try {
