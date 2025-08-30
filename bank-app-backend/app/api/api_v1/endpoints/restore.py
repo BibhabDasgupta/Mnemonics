@@ -320,3 +320,38 @@ async def verify_signature(data: dict, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Signature verification failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Signature verification failed: {str(e)}")
+
+
+
+@router.post("/restore/verify-seedkey")
+async def verify_seedkey(data: dict, db: Session = Depends(get_db)):
+    try:
+        if not data or 'phoneNumber' not in data or 'customerId' not in data or 'seedData' not in data:
+            raise HTTPException(status_code=400, detail="Missing required fields")
+        
+        try:
+            phone_number = decrypt_data(data['phoneNumber'])
+            customer_id = decrypt_data(data['customerId'])
+            seed_data = {
+                "userId": decrypt_data(data['seedData']['userId']),
+                "publicKey": decrypt_data(data['seedData']['publicKey']),
+            }
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=f"Decryption failed: {str(e)}")
+        
+        # Verify seed key public key against seedkeys table
+        seedkey = db.query(Seedkey).filter(Seedkey.customer_id == customer_id, Seedkey.user_id == seed_data['userId']).first()
+        if not seedkey:
+            raise HTTPException(status_code=404, detail="Seed key not found for this customer")
+        
+        if seedkey.public_key.lower() != seed_data['publicKey'].lower():
+            raise HTTPException(status_code=422, detail="Seed key public key does not match stored key")
+        
+        return {"status": "Seed key verified successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Seed key verification failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Seed key verification failed: {str(e)}")

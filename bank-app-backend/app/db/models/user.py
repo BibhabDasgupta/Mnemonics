@@ -8,7 +8,7 @@ class Account(Base):
     __tablename__ = "account"
     # MODIFIED: account_number is now the primary key. The auto-incrementing id is removed.
     account_number = Column(String, primary_key=True, index=True)
-    customer_id = Column(String, unique=True, nullable=False, index=True)
+    customer_id = Column(String, nullable=False)
     account_type = Column(String, nullable=False, default="Savings")
     balance = Column(Numeric(10, 2), nullable=False, default=0.00)            
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -1,19 +1,33 @@
-// --- File: src/pages/LoginPage.tsx ---
 import { useNavigate } from "react-router-dom";
 import FidoLogin from "@/components/FidoLogin";
 import { useEffect, useState } from "react";
 import { loadCustomerInfo } from "@/utils/deviceStateChecker";
 import { useAppContext } from "@/context/AppContext";
-import { useLocationContext } from "@/context/LocationContext"; // ✅ ADD
-import { AuthService } from '@/services/authService';
+import { useLocationContext } from "@/context/LocationContext";
+import { AuthService } from "@/services/authService";
+
+interface Account {
+  account_number: string;
+  account_type: string;
+  balance: number;
+  customer_id: string;
+  transactions: Transaction[];
+}
+
+interface Transaction {
+  id: string;
+  account_number: string;
+  description: string;
+  amount: number;
+  type: "credit" | "debit";
+  date: string;
+  terminal_id: string;
+}
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const { setCustomerId, setCustomerName } = useAppContext();
-  
-  // Location context for storing login location
+  const { setCustomerId, setCustomerName, setSelectedAccount } = useAppContext();
   const { userFriendlyLocation, hasLocationPermission, requestPermission } = useLocationContext();
-  
   const [customerName, setLocalCustomerName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,15 +60,14 @@ const LoginPage = () => {
     fetchCustomerInfo();
   }, [navigate, setCustomerId, setCustomerName]);
 
-  // Initialize location tracking on login page
   useEffect(() => {
     const initializeLocationForLogin = async () => {
       if (!hasLocationPermission) {
-        console.log('🌍 [LoginPage] Requesting location permission for login tracking');
+        console.log('LoginPage: Requesting location permission for login tracking');
         try {
           await requestPermission();
         } catch (error) {
-          console.log('🌍 [LoginPage] Location permission not granted, proceeding without GPS');
+          console.log('LoginPage: Location permission not granted, proceeding without GPS');
         }
       }
     };
@@ -64,61 +77,96 @@ const LoginPage = () => {
     }
   }, [isLoading, hasLocationPermission, requestPermission]);
 
-  // Enhanced success handler with AuthService integration
-  const handleLoginSuccess = async (responseData?: any) => {
-  console.log('🔐 [LoginPage] Login successful, storing login data');
-  
-  try {
-    // ✅ FIX: Store better login data
-    const loginData = {
-      customer_id: responseData?.customer_unique_id || 'unknown',
-      last_login: new Date().toISOString(),
-      login_location: userFriendlyLocation !== 'Location unavailable' ? userFriendlyLocation : 'Location not available',
-      device_info: `${navigator.userAgent.includes('Chrome') ? 'Chrome' : 
-                     navigator.userAgent.includes('Firefox') ? 'Firefox' : 
-                     navigator.userAgent.includes('Safari') ? 'Safari' : 'Unknown'} on ${navigator.platform}`
-    };
-    
-    console.log('🔐 [LoginPage] Storing enhanced login data:', loginData);
-    AuthService.storeLoginData(loginData);
-    
-  } catch (error) {
-    console.error('🔐 [LoginPage] Error storing login data:', error);
-  }
-  
-  navigate("/dashboard", { replace: true });
-};
-
-  // Enhanced logout handler (for future use)
-  const handleLogout = () => {
-    console.log('🔐 [LoginPage] Logging out, clearing stored data');
-    
+  const handleLoginSuccess = async (selectedAccount?: Account) => {
+    console.log('LoginPage: Login successful, processing account selection');
     try {
-      // Clear login data
-      AuthService.clearLoginData();
+      const customerInfo = await loadCustomerInfo();
+      const loginData = {
+        customer_id: customerInfo?.customerId || 'unknown',
+        last_login: new Date().toISOString(),
+        login_location: userFriendlyLocation !== 'Location unavailable' ? userFriendlyLocation : 'Location not available',
+        device_info: `${navigator.userAgent.includes('Chrome') ? 'Chrome' : 
+                      navigator.userAgent.includes('Firefox') ? 'Firefox' : 
+                      navigator.userAgent.includes('Safari') ? 'Safari' : 'Unknown'} on ${navigator.platform}`,
+        selected_account: selectedAccount || null,
+      };
+      console.log('LoginPage: Storing enhanced login data:', loginData);
+      AuthService.storeLoginData(loginData);
       
-      // Clear auth cookie
-      document.cookie = 'auth_token=; max-age=0; path=/; Secure; SameSite=Strict';
-      
-      console.log('🔐 [LoginPage] Logout data cleared successfully');
+      if (selectedAccount) {
+        console.log('LoginPage: Setting selected account in AppContext:', {
+          accountNumber: selectedAccount.account_number,
+          balance: selectedAccount.balance,
+          transactionCount: selectedAccount.transactions?.length || 0
+        });
+        setSelectedAccount(selectedAccount);
+        
+        // Navigate to dashboard immediately after account selection
+        navigate("/dashboard", { replace: true });
+      } else {
+        // This shouldn't happen with the new flow, but keeping as fallback
+        console.warn('LoginPage: No account selected, this should not happen');
+        setError('No account was selected during login');
+      }
     } catch (error) {
-      console.error('🔐 [LoginPage] Error during logout cleanup:', error);
+      console.error('LoginPage: Error processing login success:', error);
+      setError(`Failed to process login: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Still navigate to dashboard even if there's an error storing login data
+      if (selectedAccount) {
+        setSelectedAccount(selectedAccount);
+        navigate("/dashboard", { replace: true });
+      }
     }
-    
-    navigate('/login', { replace: true });
   };
 
-  // Enhanced proceed handler
-  const handleProceed = () => {
-    console.log('🔐 [LoginPage] Manual proceed triggered');
-    handleLoginSuccess();
+  const handleLogout = () => {
+    console.log('LoginPage: Logging out, clearing stored data');
+    try {
+      AuthService.clearLoginData();
+      document.cookie = 'auth_token=; max-age=0; path=/; Secure; SameSite=Strict';
+      setSelectedAccount(null);
+      console.log('LoginPage: Logout data cleared successfully');
+    } catch (error) {
+      console.error('LoginPage: Error during logout cleanup:', error);
+      setError(`Logout failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+    navigate('/login', { replace: true });
   };
 
   if (error) {
     console.error('LoginPage: Rendering error:', error);
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        Error: {error}
+      <div style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        backgroundColor: '#fee',
+        padding: '20px'
+      }}>
+        <div style={{ 
+          textAlign: 'center',
+          backgroundColor: 'white',
+          padding: '20px',
+          borderRadius: '8px',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+        }}>
+          <h2 style={{ color: '#dc2626', marginBottom: '16px' }}>Error</h2>
+          <p style={{ color: '#374151', marginBottom: '16px' }}>{error}</p>
+          <button 
+            onClick={() => window.location.href = '/landing'} 
+            style={{
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              padding: '8px 16px',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            Return to Landing
+          </button>
+        </div>
       </div>
     );
   }
@@ -135,27 +183,33 @@ const LoginPage = () => {
         flexDirection: 'column',
         gap: '16px'
       }}>
-        <div>Loading...</div>
-        {/* Show location loading status */}
+        <div style={{
+          width: '50px',
+          height: '50px',
+          border: '3px solid #e5e7eb',
+          borderTop: '3px solid #3b82f6',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite'
+        }} />
+        <div>Loading customer information...</div>
         <div style={{ fontSize: '12px', color: '#666', textAlign: 'center' }}>
-        {hasLocationPermission ? (
-          userFriendlyLocation.includes('unavailable') ? 
-          '📍 Resolving location...' : 
-          `📍 ${userFriendlyLocation}`
-        ) : (
-          '📍 Preparing location services...'
-        )}
-      </div>
+          {hasLocationPermission ? (
+            userFriendlyLocation.includes('unavailable') ? 
+            'Resolving location...' : 
+            `Location: ${userFriendlyLocation}`
+          ) : (
+            'Preparing location services...'
+          )}
+        </div>
       </div>
     );
   }
 
   console.log('LoginPage: Rendering FidoLogin with customerName:', customerName);
-  console.log('🌍 [LoginPage] Current location for login:', userFriendlyLocation);
+  console.log('LoginPage: Current location for login:', userFriendlyLocation);
   
   return (
     <div>
-      {/* Optional location status indicator */}
       {process.env.NODE_ENV === 'development' && (
         <div style={{
           position: 'fixed',
@@ -171,7 +225,6 @@ const LoginPage = () => {
           🌍 {userFriendlyLocation}
         </div>
       )}
-      
       <FidoLogin 
         onSuccess={handleLoginSuccess} 
         customerName={customerName}

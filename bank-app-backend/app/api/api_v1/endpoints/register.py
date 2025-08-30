@@ -375,3 +375,148 @@ async def complete_device_verification(data: PhoneVerificationRequest, db: Sessi
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Device verification failed: {str(e)}")
+
+
+
+# Add this endpoint to your registration.py file (after the existing endpoints)
+
+@router.get("/customer/{customer_id}/phone")
+async def get_customer_phone(customer_id: str, db: Session = Depends(get_db)):
+    """
+    Get phone number for a customer by customer_id from app_data table.
+    Used for OTP verification during transactions.
+    """
+    try:
+        # Validate customer_id format (basic validation)
+        if not customer_id or len(customer_id.strip()) == 0:
+            raise HTTPException(status_code=400, detail="Invalid customer ID format")
+        
+        # Query app_data table for phone number
+        query = text("""
+            SELECT phone_number, app_access_revoked
+            FROM app_data
+            WHERE customer_id = :customer_id
+        """)
+        result = db.execute(query, {"customer_id": customer_id.strip()}).fetchone()
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Customer not found")
+        
+        # Check if app access is revoked
+        if result.app_access_revoked:
+            raise HTTPException(status_code=403, detail="Customer access has been revoked")
+        
+        # Check if phone number exists
+        if not result.phone_number:
+            raise HTTPException(status_code=404, detail="Phone number not found for customer")
+        
+        return {
+            "phone_number": result.phone_number,
+            "status": "success"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+
+# Optional: Add this endpoint if you want to verify customer exists before fetching phone
+@router.get("/customer/{customer_id}/verify")
+async def verify_customer_exists(customer_id: str, db: Session = Depends(get_db)):
+    """
+    Verify if a customer exists and has valid app access.
+    Returns customer basic info without sensitive data.
+    """
+    try:
+        if not customer_id or len(customer_id.strip()) == 0:
+            raise HTTPException(status_code=400, detail="Invalid customer ID format")
+        
+        query = text("""
+            SELECT customer_id, name, app_access_revoked, created_at
+            FROM app_data
+            WHERE customer_id = :customer_id
+        """)
+        result = db.execute(query, {"customer_id": customer_id.strip()}).fetchone()
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Customer not found")
+        
+        if result.app_access_revoked:
+            raise HTTPException(status_code=403, detail="Customer access has been revoked")
+        
+        return {
+            "customer_id": result.customer_id,
+            "name": result.name,
+            "status": "active",
+            "registered_date": result.created_at.isoformat() if result.created_at else None
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+
+@router.post("/transaction/otp/send")
+def send_transaction_otp(request: PhoneVerificationRequest, db: Session = Depends(get_db)):
+    """
+    Send OTP for transaction verification (allows registered users)
+    """
+    try:
+        phone_number = otp_service.decrypt_phone_number(
+            request.encrypted_phone_number
+        )
+        
+        # Check if user exists and is not revoked
+        customer = otp_service.check_phone_number(db, phone_number)
+        
+        if customer["status"] == "revoked":
+            raise HTTPException(
+                status_code=403,
+                detail="Account access revoked. Please visit a branch."
+            )
+        
+        if customer["status"] == "fresh":
+            raise HTTPException(
+                status_code=404,
+                detail="Customer not found in system."
+            )
+        
+        # Allow registered users to receive OTP for transactions
+        otp_service.send_otp(phone_number, "transaction")
+        
+        return {
+            "status": "Transaction OTP sent successfully",
+            "phone_number": phone_number,
+            "customer_id": customer["customer_id"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@router.post("/transaction/otp/verify")
+def verify_transaction_otp(request: OTPVerificationRequest, db: Session = Depends(get_db)):
+    """
+    Verify OTP for transaction
+    """
+    try:
+        phone_number = otp_service.decrypt_phone_number(
+            request.encrypted_phone_number
+        )
+        
+        if not otp_service.verify_otp(phone_number, request.otp_code):
+            raise HTTPException(status_code=400, detail="Invalid OTP")
+        
+        return {"status": "Transaction OTP verified successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
