@@ -1,4 +1,7 @@
 // --- File: src/App.tsx ---
+import PWAInstallPrompt from './components/ui/PWAInstallPrompt';
+
+// Then add <PWAInstallPrompt /> somewhere in your main App component JSX
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
