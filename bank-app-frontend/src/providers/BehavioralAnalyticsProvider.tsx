@@ -6,7 +6,15 @@ import { SecurityService } from "@/services/securityService";
 
 export namespace BehavioralAnalytics {
     export interface Payload {
-        customer_unique_id?: string;
+        customer_unique_id: string;  
+        flight_avg: number;
+        traj_avg: number;
+        typing_speed: number;
+        correction_rate: number;
+        clicks_per_minute: number;
+    }
+
+    interface IncompletePayload {
         flight_avg: number;
         traj_avg: number;
         typing_speed: number;
@@ -31,10 +39,49 @@ export namespace BehavioralAnalytics {
 
     const Context = createContext<null>(null);
 
+    // UUID validation utility
+    const isValidUUID = (uuid: string): boolean => {
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        return uuidRegex.test(uuid);
+    };
+
+    // Payload validation utility
+    const validatePayload = (payload: Payload): { valid: boolean; errors: string[] } => {
+        const errors: string[] = [];
+
+        // Validate customer_unique_id
+        if (!payload.customer_unique_id || !isValidUUID(payload.customer_unique_id)) {
+            errors.push('Invalid or missing customer_unique_id (must be valid UUID)');
+        }
+
+        // Validate numeric ranges (aligned with backend expectations)
+        if (payload.flight_avg < 0 || payload.flight_avg > 10) {
+            errors.push('flight_avg must be between 0 and 10 seconds');
+        }
+        
+        if (payload.traj_avg < 0 || payload.traj_avg > 1000) {
+            errors.push('traj_avg must be between 0 and 1000 pixels');
+        }
+        
+        if (payload.typing_speed < 0 || payload.typing_speed > 500) {
+            errors.push('typing_speed must be between 0 and 500 chars/minute');
+        }
+        
+        if (payload.correction_rate < 0 || payload.correction_rate > 100) {
+            errors.push('correction_rate must be between 0 and 100 corrections/minute');
+        }
+        
+        if (payload.clicks_per_minute < 0 || payload.clicks_per_minute > 1000) {
+            errors.push('clicks_per_minute must be between 0 and 1000 clicks/minute');
+        }
+
+        return { valid: errors.length === 0, errors };
+    };
+
     export const Provider = ({
         children,
         endpoint,
-        intervalMs = 60000,
+        intervalMs = 30000,
         debug = false,
     }: PropsWithChildren<ProviderProps>) => {
         const { customerId } = useAppContext();
@@ -49,10 +96,17 @@ export namespace BehavioralAnalytics {
             totalKeystrokes: 0,
         });
         const intervalStartRef = useRef<number>(Date.now());
-        const pendingPayloadsRef = useRef<Payload[]>([]);
+        const pendingPayloadsRef = useRef<IncompletePayload[]>([]);
 
         const sendPayloadToServer = useCallback(async (payload: Payload) => {
             console.log('--- [Analytics] Sending Payload ---', payload);
+
+            // Validate payload before sending
+            const validation = validatePayload(payload);
+            if (!validation.valid) {
+                console.error('❌ Invalid payload:', validation.errors);
+                return;
+            }
 
             if (!debug) {
                 try {
@@ -64,28 +118,27 @@ export namespace BehavioralAnalytics {
                     
                     if (!response.ok) {
                         console.error('❌ Server rejected behavioral analytics:', response.status, response.statusText);
+                        // Log response body for debugging
+                        const errorText = await response.text();
+                        console.error('Server error details:', errorText);
                     } else {
                         console.log('✅ Behavioral analytics sent successfully');
                         
                         // 🤖 PERFORM ML ANOMALY DETECTION AFTER SUCCESSFUL SUBMISSION
-                        if (payload.customer_unique_id) {
-                            await performMLVerification(payload);
-                        }
+                        await performMLVerification(payload);
                     }
                 } catch (error) {
                     console.error('❌ Failed to send behavioral analytics:', error);
                 }
             } else {
-                console.log('🐛 Debug mode: Would send payload:', payload);
+                console.log('🛠 Debug mode: Would send payload:', payload);
                 // In debug mode, still perform ML verification for testing
-                if (payload.customer_unique_id) {
-                    await performMLVerification(payload);
-                }
+                await performMLVerification(payload);
             }
         }, [endpoint, debug]);
 
         const performMLVerification = useCallback(async (payload: Payload) => {
-            if (!payload.customer_unique_id || isSecurityBlocked) return;
+            if (isSecurityBlocked) return;
 
             console.log('🤖 [ML Security] Performing anomaly detection...');
             
@@ -127,13 +180,16 @@ export namespace BehavioralAnalytics {
 
         useEffect(() => {
             const processPendingPayloads = async () => {
-                if (customerId && pendingPayloadsRef.current.length > 0) {
+                if (customerId && isValidUUID(customerId) && pendingPayloadsRef.current.length > 0) {
                     console.log(`[Analytics] Customer ID found. Processing ${pendingPayloadsRef.current.length} pending payloads.`);
                     const payloadsToSend = [...pendingPayloadsRef.current];
                     pendingPayloadsRef.current = [];
 
-                    for (const payload of payloadsToSend) {
-                        const completePayload = { ...payload, customer_unique_id: customerId };
+                    for (const incompletePayload of payloadsToSend) {
+                        const completePayload: Payload = { 
+                            ...incompletePayload, 
+                            customer_unique_id: customerId 
+                        };
                         await sendPayloadToServer(completePayload);
                     }
                     console.log("[Analytics] Finished processing pending payloads.");
@@ -162,19 +218,21 @@ export namespace BehavioralAnalytics {
                 corrections: metrics.correctionKeys
             });
 
-            if (durationMinutes <= 0) {
-                console.log("[Analytics] Invalid duration, skipping");
+            // Ensure minimum duration to avoid division by zero and invalid data
+            if (durationMinutes <= 0.1) { // At least 6 seconds
+                console.log("[Analytics] Duration too short, skipping");
                 intervalStartRef.current = Date.now();
                 return;
             }
 
-            // Calculate flight time average
+            // Calculate flight time average with better filtering
             let key_flight_avg_s = 0;
             if (metrics.keyPressTimestamps.length > 1) {
                 const flightTimes = [];
                 for (let i = 1; i < metrics.keyPressTimestamps.length; i++) {
                     const flightTime = (metrics.keyPressTimestamps[i] - metrics.keyPressTimestamps[i - 1]) / 1000;
-                    if (flightTime > 0 && flightTime < 10) {
+                    // More realistic bounds for flight time
+                    if (flightTime > 0.01 && flightTime < 5) {
                         flightTimes.push(flightTime);
                     }
                 }
@@ -183,10 +241,11 @@ export namespace BehavioralAnalytics {
                 }
             }
 
-            // Calculate average trajectory distance
+            // Calculate average trajectory distance with smoothing
             let traj_avg = 0;
             if (metrics.trajectoryDistances.length > 0) {
-                const validTrajectories = metrics.trajectoryDistances.filter(dist => dist > 1 && dist < 1000);
+                // Filter out micro-movements and extreme values
+                const validTrajectories = metrics.trajectoryDistances.filter(dist => dist >= 2 && dist <= 500);
                 if (validTrajectories.length > 0) {
                     traj_avg = validTrajectories.reduce((sum, dist) => sum + dist, 0) / validTrajectories.length;
                 }
@@ -196,22 +255,25 @@ export namespace BehavioralAnalytics {
             const correction_rate = metrics.correctionKeys / durationMinutes;
             const clicks_per_minute = metrics.clickCount / durationMinutes;
 
-            const payload: Payload = {
-                flight_avg: key_flight_avg_s,
-                traj_avg: traj_avg,
-                typing_speed: typing_speed,
-                correction_rate: correction_rate,
-                clicks_per_minute: clicks_per_minute,
+            const incompletePayload: IncompletePayload = {
+                flight_avg: Number(key_flight_avg_s.toFixed(4)),
+                traj_avg: Number(traj_avg.toFixed(2)),
+                typing_speed: Number(typing_speed.toFixed(2)),
+                correction_rate: Number(correction_rate.toFixed(2)),
+                clicks_per_minute: Number(clicks_per_minute.toFixed(2)),
             };
 
-            console.log(`[Analytics] Calculated payload:`, payload);
+            console.log(`[Analytics] Calculated payload:`, incompletePayload);
 
-            if (customerId) {
-                const completePayload = { ...payload, customer_unique_id: customerId };
+            if (customerId && isValidUUID(customerId)) {
+                const completePayload: Payload = { 
+                    ...incompletePayload, 
+                    customer_unique_id: customerId 
+                };
                 await sendPayloadToServer(completePayload);
             } else {
-                console.log("[Analytics] No Customer ID. Queuing payload.");
-                pendingPayloadsRef.current.push(payload);
+                console.log("[Analytics] No valid Customer ID. Queuing payload.");
+                pendingPayloadsRef.current.push(incompletePayload);
             }
 
             // Reset metrics for next interval
@@ -230,16 +292,20 @@ export namespace BehavioralAnalytics {
             const handleKeyDown = (e: KeyboardEvent) => {
                 if (isSecurityBlocked) return;
                 
-                const timestamp = Date.now();
-                metricsRef.current.keyPressTimestamps.push(timestamp);
-                metricsRef.current.totalKeystrokes += 1;
-                
-                if (e.key === 'Backspace' || e.key === 'Delete') {
-                    metricsRef.current.correctionKeys += 1;
-                }
-                
-                if (metricsRef.current.totalKeystrokes % 10 === 0) {
-                    console.log(`[Analytics] Keystroke count: ${metricsRef.current.totalKeystrokes}`);
+                // Filter out non-character keys for more accurate metrics
+                if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') {
+                    const timestamp = Date.now();
+                    metricsRef.current.keyPressTimestamps.push(timestamp);
+                    metricsRef.current.totalKeystrokes += 1;
+                    
+                    // Only count actual correction keys
+                    if (e.key === 'Backspace' || e.key === 'Delete') {
+                        metricsRef.current.correctionKeys += 1;
+                    }
+                    
+                    if (metricsRef.current.totalKeystrokes % 10 === 0) {
+                        console.log(`[Analytics] Keystroke count: ${metricsRef.current.totalKeystrokes}`);
+                    }
                 }
             };
 
@@ -247,7 +313,9 @@ export namespace BehavioralAnalytics {
                 if (isSecurityBlocked) return;
                 
                 metricsRef.current.clickCount += 1;
-                console.log(`[Analytics] Click count: ${metricsRef.current.clickCount}`);
+                if (metricsRef.current.clickCount % 5 === 0) {
+                    console.log(`[Analytics] Click count: ${metricsRef.current.clickCount}`);
+                }
             };
 
             const handleMouseMove = (e: MouseEvent) => {
@@ -261,7 +329,8 @@ export namespace BehavioralAnalytics {
                     const deltaY = clientY - lastPos.y;
                     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
                     
-                    if (distance > 1) {
+                    // Filter out micro-movements
+                    if (distance > 2) {
                         metricsRef.current.trajectoryDistances.push(distance);
                     }
                 }

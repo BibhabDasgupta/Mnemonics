@@ -1,4 +1,4 @@
-# --- File: bank-app-backend/main.py ---
+# --- File: bank-app-frontend/behaviour_analysis/main.py ---
 from fastapi import FastAPI, Request
 import uvicorn 
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,34 +7,20 @@ from app.db.base import Base, engine
 
 # Import all routers
 from app.api.api_v1.endpoints import (
-    accounts,
-    account,
-    register,
-    restore,
-    login,
-    transactions,
-    location,
-    app_data
+    analytics,
+    ml_analytics
 )
-# Import all models to ensure tables are created
-from app.db.models import user as user_models, challenge as challenge_model,features as features_model
 
-user_models.Base.metadata.create_all(bind=engine)
-challenge_model.Base.metadata.create_all(bind=engine)
-features_model.Base.metadata.create_all(bind=engine)
+# Import only the models that exist
+from app.db.models import behavior as behavior_model
+
+# Create tables for the models that exist
+behavior_model.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
-
-# Add to the router includes
-app.include_router(location.router, prefix=settings.API_V1_STR, tags=["Location Tracking"])
-app.include_router(account.router, prefix=settings.API_V1_STR, tags=["Account Management"])
-
-# Also ensure the UserLocation table is created
-from app.services.location_service import UserLocation
-UserLocation.metadata.create_all(bind=engine)
 
 # --- THIS IS THE DEFINITIVE DEBUGGING MIDDLEWARE ---
 @app.middleware("http")
@@ -73,13 +59,8 @@ def read_root():
     return {"status": "Backend is running"}
 
 # Include all API routers
-# app.include_router(seedkey_auth.router, prefix=settings.API_V1_STR, tags=["Seedkey Authentication"])
-app.include_router(accounts.router, prefix=settings.API_V1_STR, tags=["Bank Accounts"])
-app.include_router(register.router, prefix=settings.API_V1_STR, tags=["Registration"])
-app.include_router(login.router, prefix=settings.API_V1_STR, tags=["Login"])
-app.include_router(restore.router, prefix=settings.API_V1_STR, tags=["Restoration"])
-app.include_router(transactions.router, prefix=settings.API_V1_STR, tags=["Transactions"]) # MODIFIED: Include the new router
-app.include_router(app_data.router, prefix=settings.API_V1_STR, tags=["App Data Management"])
+app.include_router(analytics.router, prefix=settings.API_V1_STR, tags=["Behavioral Analytics"])
+app.include_router(ml_analytics.router, prefix=settings.API_V1_STR, tags=["ML Behavioral Analytics"])
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=3000)

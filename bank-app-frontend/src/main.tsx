@@ -12,8 +12,8 @@ createRoot(document.getElementById("root")!).render(
         <SecurityProvider>
             <LocationProvider>
                 <BehavioralAnalytics.Provider
-                    endpoint="http://localhost:8000/api/v1/analytics/behavior"
-                    intervalMs={6000000}
+                    endpoint="http://localhost:3000/api/v1/analytics/behavior"
+                    intervalMs={30000}
                     debug={false}
                 >
                     <App />

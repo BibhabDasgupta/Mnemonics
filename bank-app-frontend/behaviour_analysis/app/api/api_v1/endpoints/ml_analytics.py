@@ -1,4 +1,4 @@
-# --- File: bank-app-backend/app/api/api_v1/endpoints/ml_analytics.py ---
+# --- File: bank-app-frontend/app/api/api_v1/endpoints/ml_analytics.py ---
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Dict
@@ -222,7 +222,7 @@ def ml_service_health(db: Session = Depends(get_db)):
             UserBehavior.customer_unique_id.in_(
                 db.query(UserBehavior.customer_unique_id)
                 .group_by(UserBehavior.customer_unique_id)
-                .having(func.count(UserBehavior.id) >= 15)
+                .having(func.count(UserBehavior.id) >= 30)
                 .subquery()
                 .select()
             )

@@ -26,19 +26,16 @@ def log_behavioral_data(
     print(f"             typing_speed={behavior_in.typing_speed}, correction_rate={behavior_in.correction_rate}")
     print(f"             clicks_per_minute={behavior_in.clicks_per_minute}")
     
-    # ✅ FIX: Pre-process and sanitize the behavioral data
     sanitized_data = sanitize_behavioral_data(behavior_in)
     
     # Step 1: Standard validation and saving using existing service with relaxed validation
     behavior_service = BehaviorService(db)
     
-    # ✅ FIX: Try with relaxed validation first
     success, behavior_obj, message = behavior_service.validate_and_save_behavior_relaxed(sanitized_data)
     
     if not success:
         print(f"⚠️ Relaxed validation failed, trying fallback approach...")
         
-        # ✅ FIX: Fallback - Force save with minimal validation for learning
         success, behavior_obj, message = behavior_service.force_save_for_learning(sanitized_data)
         
         if not success:
@@ -108,7 +105,6 @@ def log_behavioral_data(
     return behavior_obj
 
 
-# ✅ FIX: Simple sanitization function that matches your schema
 def sanitize_behavioral_data(behavior_in: BehaviorDataCreate) -> BehaviorDataCreate:
     """
     Sanitize and normalize behavioral data to prevent validation issues.
@@ -116,7 +112,6 @@ def sanitize_behavioral_data(behavior_in: BehaviorDataCreate) -> BehaviorDataCre
     """
     print(f"🧹 Sanitizing behavioral data...")
     
-    # ✅ FIX: Create a new sanitized object with only the fields that exist in your schema
     sanitized = BehaviorDataCreate(
         customer_unique_id=behavior_in.customer_unique_id,
         flight_avg=max(0.1, behavior_in.flight_avg) if behavior_in.flight_avg == 0.0 else behavior_in.flight_avg,
