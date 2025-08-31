@@ -1,3 +1,4 @@
+# --- File: app/services/signature_service.py ---
 import cv2
 import numpy as np
 import base64

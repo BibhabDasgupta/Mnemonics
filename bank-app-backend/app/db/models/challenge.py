@@ -1,3 +1,4 @@
+# --- File: app/db/models/challenge.py ---
 from sqlalchemy import Column, Integer, String, Enum, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime

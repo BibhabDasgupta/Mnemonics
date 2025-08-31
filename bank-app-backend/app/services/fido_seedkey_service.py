@@ -1,3 +1,4 @@
+# --- File: app/services/fido_seedkey_service.py ---
 from sqlalchemy.orm import Session
 from app.db.models.user import Passkey, Seedkey, AppData
 from app.db.models.challenge import Challenge, ChallengeType

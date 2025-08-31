@@ -1,3 +1,4 @@
+# --- File: app/services/challenge_service.py ---
 from sqlalchemy.orm import Session
 from app.db.models.challenge import Challenge, ChallengeType
 from datetime import datetime

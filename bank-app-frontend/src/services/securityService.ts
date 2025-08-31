@@ -29,7 +29,7 @@ interface SecurityAlert {
 }
 
 export class SecurityService {
-  private static readonly API_BASE = 'http://localhost:8000/api/v1';
+  private static readonly API_BASE = 'http://localhost:3000/api/v1';
 
   static async verifyBehavior(metrics: {
     customer_unique_id: string;

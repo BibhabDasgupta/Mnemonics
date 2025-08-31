@@ -1,4 +1,4 @@
-# --- File: app/schemas/transaction.py ---
+# --- File: app/schemas/transactions.py ---
 
 from pydantic import BaseModel, Field
 from typing import Optional
