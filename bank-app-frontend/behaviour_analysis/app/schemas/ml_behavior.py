@@ -1,4 +1,4 @@
-# --- File: bank-app-backend/app/schemas/ml_behavior.py ---
+# --- File: bank-app-frontend/app/schemas/ml_behavior.py ---
 from pydantic import BaseModel, Field
 from typing import Dict, Optional
 import uuid
@@ -50,7 +50,7 @@ class MLModelInfoResponse(BaseModel):
 
 class AutoTrainRequest(BaseModel):
     """Request model for auto-training all eligible users."""
-    min_sessions: int = Field(default=15, ge=5, description="Minimum sessions required for training")
+    min_sessions: int = Field(default=30, ge=5, description="Minimum sessions required for training")
 
 class AutoTrainResponse(BaseModel):
     """Response model for auto-training results."""

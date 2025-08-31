@@ -1,8 +1,7 @@
-# --- File: bank-app-backend/app/services/ml_behavior_service.py ---
+# --- File: bank-app-frontend/behaviour_analysis/app/services/ml_behavior_service.py ---
 import os
 import joblib
 import numpy as np
-import psycopg2
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 from sqlalchemy.orm import Session
@@ -31,9 +30,12 @@ class MLBehaviorService:
     def get_quality_user_data(self, customer_id: uuid.UUID) -> List[Dict]:
         """Fetch quality behavioral data for a specific user."""
         try:
+            # Convert UUID to string for SQLite compatibility
+            customer_id_str = str(customer_id)
+            
             # Query using SQLAlchemy
             behaviors = self.db.query(UserBehavior).filter(
-                UserBehavior.customer_unique_id == customer_id
+                UserBehavior.customer_unique_id == customer_id_str
             ).order_by(UserBehavior.created_at.desc()).all()
             
             if not behaviors:
@@ -77,7 +79,7 @@ class MLBehaviorService:
         
         data = self.get_quality_user_data(customer_id)
         
-        MIN_DATA_POINTS = 15
+        MIN_DATA_POINTS = 30
         if len(data) < MIN_DATA_POINTS:
             return {
                 'success': False,
@@ -122,7 +124,7 @@ class MLBehaviorService:
         model = IsolationForest(
             contamination=0.05,       # Expect 5% outliers
             n_estimators=200,         # More trees for stability
-            max_samples=min(len(data), 15),  # Use available data up to 15
+            max_samples=min(len(data), 30),  # Use available data up to 30
             max_features=5,           # All 5 features
             random_state=42,
             bootstrap=True
@@ -259,7 +261,7 @@ class MLBehaviorService:
             return {
                 'model_exists': False,
                 'data_count': data_count,
-                'requires_training': data_count >= 15,
+                'requires_training': data_count >= 30,
                 'message': f"No model found. User has {data_count} quality sessions."
             }
         
@@ -301,14 +303,14 @@ class MLBehaviorService:
             try:
                 artifacts = joblib.load(model_path)
                 last_baseline_size = artifacts.get('baseline_size', 0)
-                if len(data) >= last_baseline_size + 15:  # Significant new data
+                if len(data) >= last_baseline_size + 30:  # Significant new data
                     needs_training = True
                     reason = f"Significant new data: {len(data)} vs {last_baseline_size}"
             except:
                 needs_training = True
                 reason = "Model file corrupted"
         
-        if needs_training and len(data) >= 15:
+        if needs_training and len(data) >= 30:
             print(f"Retraining model for user {customer_id}: {reason}")
             return self.train_user_model(customer_id)
         else:
