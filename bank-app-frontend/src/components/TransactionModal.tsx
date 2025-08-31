@@ -756,7 +756,6 @@ export const TransactionModal = ({ isOpen, onClose }: TransactionModalProps) => 
       <DialogHeader>
         <DialogTitle className="flex items-center space-x-2">
           <span>Processing Transaction</span>
-          <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-500" />
         </DialogTitle>
         <DialogDescription>
           Please wait while we process your transaction. Do not close this window.
