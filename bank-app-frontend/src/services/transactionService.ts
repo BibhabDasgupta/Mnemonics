@@ -9,7 +9,8 @@ export interface TransactionData {
   amount: number;
   terminal_id: string;
   biometric_hash: string;
-  customer_id?: string; // Added for PIN verification
+  account_number?: string;
+  customer_id?: string;
 }
 
 // New interface for PIN verification
@@ -117,6 +118,7 @@ export class TransactionService {
     console.log('💳 [TransactionService] Executing enhanced re-authenticated transaction:', {
       amount: transactionData.amount,
       recipient: transactionData.recipient_account_number,
+      accountNumber: transactionData.account_number || 'not specified',
       originalAlertId: originalAlertId || 'N/A',
       pinVerified: pinVerified,
       bypassFraudDetection: true
@@ -160,10 +162,11 @@ export class TransactionService {
   // Enhanced FIDO2 authentication + re-authenticated transaction (with PIN pre-verification)
   static async executeWithFIDO2Auth(transactionData: TransactionData, originalAlertId?: string, pinVerified: boolean = true): Promise<any> {
     try {
-      console.log('🔐 [TransactionService] Starting enhanced FIDO2 authentication for transaction retry');
+      console.log('🔒 [TransactionService] Starting enhanced FIDO2 authentication for transaction retry');
       console.log('📋 [TransactionService] Enhanced transaction details:', {
         amount: transactionData.amount,
         recipient: transactionData.recipient_account_number,
+        accountNumber: transactionData.account_number || 'not specified',
         originalAlertId: originalAlertId || 'N/A',
         pinPreVerified: pinVerified
       });
@@ -193,6 +196,7 @@ export class TransactionService {
       console.log('💳 [TransactionService] Enhanced transaction data prepared:', {
         amount: updatedTransactionData.amount,
         recipient: updatedTransactionData.recipient_account_number,
+        accountNumber: updatedTransactionData.account_number || 'not specified',
         hasFreshBiometric: !!biometricResult.hash,
         originalAlertId: originalAlertId || 'N/A',
         pinVerified: pinVerified
@@ -244,7 +248,7 @@ export class TransactionService {
   // Complete FIDO2 authentication flow (same as before)
   private static async performCompleteFIDO2Login(): Promise<{success: boolean, error?: string}> {
     try {
-      console.log('🔐 [TransactionService] Starting complete FIDO2 login flow');
+      console.log('🔒 [TransactionService] Starting complete FIDO2 login flow');
 
       // Check WebAuthn support
       if (!window.PublicKeyCredential) {
@@ -263,7 +267,7 @@ export class TransactionService {
       }
 
       const customerId = customerInfo.customerId;
-      console.log('🔐 [TransactionService] Customer ID:', customerId);
+      console.log('🔍 [TransactionService] Customer ID:', customerId);
 
       // Step 1: Start FIDO2 login
       console.log('🔐 [TransactionService] Starting FIDO2 login...');
@@ -293,7 +297,7 @@ export class TransactionService {
         userVerification,
       };
 
-      console.log('🔐 [TransactionService] Prompting for biometric authentication...');
+      console.log('🔍 [TransactionService] Prompting for biometric authentication...');
 
       // Step 3: Get credential (this opens Windows Hello/TouchID)
       const credential = await navigator.credentials.get({ publicKey: authOptions }) as PublicKeyCredential;
@@ -384,7 +388,7 @@ export class TransactionService {
       const publicKeyHex = arrayBufferToHex(publicKey);
 
       // Step 7: Complete seed key verification
-      console.log('🔐 [TransactionService] Verifying seed key...');
+      console.log('🔍 [TransactionService] Verifying seed key...');
       const verifyResponse = await fetch('http://localhost:8000/api/v1/login/seedkey-verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

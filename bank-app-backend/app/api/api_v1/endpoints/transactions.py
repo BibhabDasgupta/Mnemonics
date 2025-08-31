@@ -180,20 +180,40 @@ def create_transaction(
     except Exception as exc:
         raise HTTPException(status_code=422, detail="Invalid amount format") from exc
 
-    # --- Pre-Transaction Checks ------------------------------------------------
-    sender_account: Optional[Account] = (
-        db.query(Account).filter(Account.customer_id == sender_customer_id).first()
-    )
+    if request.account_number:
+        sender_account: Optional[Account] = (
+            db.query(Account)
+            .filter(
+                Account.customer_id == sender_customer_id,
+                Account.account_number == request.account_number
+            )
+            .first()
+        )
+        
+        if sender_account is None:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Account {request.account_number} not found or not owned by you"
+            )
+            
+    else:
+        sender_account: Optional[Account] = (
+            db.query(Account).filter(Account.customer_id == sender_customer_id).first()
+        )
+        
+        if sender_account is None:
+            raise HTTPException(status_code=404, detail="No accounts found for customer")
+    
     recipient_account: Optional[Account] = (
         db.query(Account).filter(Account.account_number == request.recipient_account_number).first()
     )
 
-    if sender_account is None:
-        raise HTTPException(status_code=404, detail="Sender account not found")
     if recipient_account is None:
         raise HTTPException(status_code=404, detail="Recipient account not found")
+    
     if sender_account.account_number == recipient_account.account_number:
         raise HTTPException(status_code=400, detail="Cannot transfer to the same account")
+    
     if sender_account.balance < transaction_amount:
         raise HTTPException(status_code=400, detail="Insufficient funds")
 

@@ -8,10 +8,10 @@ class TransactionCreateRequest(BaseModel):
     recipient_account_number: str = Field(..., description="The account number of the recipient.")
     amount: float = Field(..., gt=0, description="The amount to transfer.")
     terminal_id: str = Field(..., description="A unique identifier for the client device/terminal.")
+    account_number: Optional[str] = Field(None, description="The sender's account number.")
     biometric_hash: str = Field(..., description="A hash representing the client's biometric state.")
     is_reauth_transaction: Optional[bool] = Field(False, description="Whether this is a re-authenticated transaction after fraud detection.")
     original_fraud_alert_id: Optional[str] = Field(None, description="ID of the original fraud alert that was bypassed.")
-    # NEW: PIN verification for re-authentication
     atm_pin: Optional[str] = Field(None, description="ATM PIN for re-authentication (required for blocked transactions)")
     pin_verified: Optional[bool] = Field(False, description="Whether PIN verification was completed")
 

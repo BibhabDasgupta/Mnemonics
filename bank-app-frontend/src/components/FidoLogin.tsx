@@ -392,7 +392,7 @@ const FidoLogin = ({ onSuccess, customerName }: FidoLoginProps) => {
                 <option value="">-- Select an account --</option>
                 {accounts.map((account) => (
                   <option key={account.account_number} value={account.account_number}>
-                    {account.account_type} - ***{account.account_number.slice(-4)} (${account.balance.toFixed(2)})
+                    {account.account_type} - ***{account.account_number.slice(-4)} (₹{account.balance.toFixed(2)})
                   </option>
                 ))}
               </select>
