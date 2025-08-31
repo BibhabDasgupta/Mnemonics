@@ -19,7 +19,7 @@ const SplashScreen = ({ onComplete }: SplashScreenProps) => {
 
   if (!isVisible) {
     return (
-      <div className="fixed inset-0 bg-gradient-primary flex items-center justify-center z-50 animate-fade-out">
+      <div className="fixed inset-0 bg-white flex items-center justify-center z-50 animate-fade-out">
         <div className="text-center">
           <img 
             src={bankLogo} 
@@ -32,7 +32,7 @@ const SplashScreen = ({ onComplete }: SplashScreenProps) => {
   }
 
   return (
-    <div className="fixed inset-0 bg-gradient-primary flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-white flex items-center justify-center z-50">
       <div className="text-center">
         <div className="relative">
           <img 
@@ -42,7 +42,7 @@ const SplashScreen = ({ onComplete }: SplashScreenProps) => {
           />
           <div className="absolute inset-0 bg-gradient-glow rounded-full animate-glow-pulse opacity-50"></div>
         </div>
-        <h1 className="text-2xl font-bold text-white opacity-80">
+        <h1 className="text-2xl font-bold text-gray-800 opacity-80">
           GlowBank
         </h1>
       </div>
