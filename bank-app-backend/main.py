@@ -12,18 +12,15 @@ from app.api.api_v1.endpoints import (
     register,
     restore,
     login,
-    analytics,
     transactions,
-    ml_analytics,
     location,
     app_data
 )
 # Import all models to ensure tables are created
-from app.db.models import user as user_models, challenge as challenge_model, behavior as behavior_model,features as features_model
+from app.db.models import user as user_models, challenge as challenge_model,features as features_model
 
 user_models.Base.metadata.create_all(bind=engine)
 challenge_model.Base.metadata.create_all(bind=engine)
-behavior_model.Base.metadata.create_all(bind=engine)
 features_model.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
@@ -81,9 +78,7 @@ app.include_router(accounts.router, prefix=settings.API_V1_STR, tags=["Bank Acco
 app.include_router(register.router, prefix=settings.API_V1_STR, tags=["Registration"])
 app.include_router(login.router, prefix=settings.API_V1_STR, tags=["Login"])
 app.include_router(restore.router, prefix=settings.API_V1_STR, tags=["Restoration"])
-app.include_router(analytics.router, prefix=settings.API_V1_STR, tags=["Behavioral Analytics"])
 app.include_router(transactions.router, prefix=settings.API_V1_STR, tags=["Transactions"]) # MODIFIED: Include the new router
-app.include_router(ml_analytics.router, prefix=settings.API_V1_STR, tags=["ML Behavioral Analytics"])
 app.include_router(app_data.router, prefix=settings.API_V1_STR, tags=["App Data Management"])
 
 if __name__ == "__main__":

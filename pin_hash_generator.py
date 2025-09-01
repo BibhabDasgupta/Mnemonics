@@ -7,7 +7,7 @@ def hash_pin(pin: str) -> str:
     salt = "atm_pin_salt_"
     return hashlib.sha256(f"{salt}{pin}".encode()).hexdigest()
 
-# Test the hash calculation
+# Test the hash calculation 
 test_pin = "1234"
 calculated_hash = hash_pin(test_pin)
 

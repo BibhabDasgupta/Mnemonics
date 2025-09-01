@@ -1,3 +1,4 @@
+# --- File: app/schemas/user.py ---
 from pydantic import BaseModel, EmailStr
 from typing import List, Dict, Any, Optional
 from datetime import datetime, date

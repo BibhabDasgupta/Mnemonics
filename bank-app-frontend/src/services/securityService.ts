@@ -29,7 +29,7 @@ interface SecurityAlert {
 }
 
 export class SecurityService {
-  private static readonly API_BASE = 'http://localhost:8000/api/v1';
+  private static readonly API_BASE = 'http://localhost:3000/api/v1';
 
   static async verifyBehavior(metrics: {
     customer_unique_id: string;
@@ -41,6 +41,40 @@ export class SecurityService {
   }): Promise<MLVerificationResult> {
     try {
       const response = await fetch(`${this.API_BASE}/ml-analytics/verify-behavior`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(metrics),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`ML verification failed: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('ML verification error:', error);
+      return {
+        success: false,
+        is_anomaly: false,
+        confidence: 0,
+        requires_training: false,
+        message: `Verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  static async verifyRestorationBehavior(metrics: {
+    customer_unique_id: string;
+    flight_avg: number;
+    traj_avg: number;
+    typing_speed: number;
+    correction_rate: number;
+    clicks_per_minute: number;
+  }): Promise<MLVerificationResult> {
+    try {
+      const response = await fetch(`${this.API_BASE}/ml-analytics/verify-restoration-behavior`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

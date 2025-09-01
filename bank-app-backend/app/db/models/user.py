@@ -1,3 +1,4 @@
+# --- File: app/db/models/user.py ---
 from sqlalchemy import Column, Integer, String, LargeBinary, DateTime, Boolean, Numeric, Date, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func

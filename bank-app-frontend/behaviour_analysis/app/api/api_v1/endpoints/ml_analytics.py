@@ -1,4 +1,4 @@
-# --- File: bank-app-backend/app/api/api_v1/endpoints/ml_analytics.py ---
+# --- File: bank-app-frontend/app/api/api_v1/endpoints/ml_analytics.py ---
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Dict
@@ -6,6 +6,7 @@ import uuid
 
 from app.db.base import get_db
 from app.services.ml_behavior_service import MLBehaviorService
+from app.services.ml_restoration_behavior_service import MLRestorationBehaviorService
 from app.schemas.ml_behavior import (
     MLBehaviorRequest,
     MLTrainingRequest,
@@ -57,6 +58,47 @@ def verify_user_behavior(
     print(f"{status_icon} ML Result: {'ANOMALY' if result.get('is_anomaly', False) else 'NORMAL'} "
           f"(confidence: {result.get('confidence', 0):.1f}%)")
     
+    return MLBehaviorResponse(**result)
+
+@router.post("/ml-analytics/verify-restoration-behavior", response_model=MLBehaviorResponse)
+def verify_user_restoration_behavior(
+    request: MLBehaviorRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Verify if user restoration behavior is anomalous using trained ML model.
+    """
+    print(f"\n🤖 ML RESTORATION BEHAVIOR VERIFICATION for user {request.customer_unique_id}")
+
+    ml_service = MLRestorationBehaviorService(db)
+
+    # Prepare metrics dictionary
+    metrics = {
+        'flight_avg': request.flight_avg,
+        'traj_avg': request.traj_avg,
+        'typing_speed': request.typing_speed,
+        'correction_rate': request.correction_rate,
+        'clicks_per_minute': request.clicks_per_minute
+    }
+
+    print(f"Input metrics: {metrics}")
+
+    # Perform anomaly detection
+    result = ml_service.predict_anomaly(request.customer_unique_id, metrics)
+
+    if not result['success']:
+        print(f"❌ ML verification failed: {result.get('message', 'Unknown error')}")
+        if result.get('requires_training', False):
+            # Try to train model if enough data exists
+            training_result = ml_service.retrain_if_needed(request.customer_unique_id)
+            if training_result['success']:
+                # Retry prediction after training
+                result = ml_service.predict_anomaly(request.customer_unique_id, metrics)
+
+    status_icon = "🚨" if result.get('is_anomaly', False) else "✅"
+    print(f"{status_icon} ML Result: {'ANOMALY' if result.get('is_anomaly', False) else 'NORMAL'} "
+          f"(confidence: {result.get('confidence', 0):.1f}%)")
+
     return MLBehaviorResponse(**result)
 
 @router.post("/ml-analytics/train-model", response_model=MLTrainingResponse)
@@ -222,7 +264,7 @@ def ml_service_health(db: Session = Depends(get_db)):
             UserBehavior.customer_unique_id.in_(
                 db.query(UserBehavior.customer_unique_id)
                 .group_by(UserBehavior.customer_unique_id)
-                .having(func.count(UserBehavior.id) >= 15)
+                .having(func.count(UserBehavior.id) >= 40)
                 .subquery()
                 .select()
             )

@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { TransactionService, TransactionData } from '@/services/transactionService';
 import { useSecurityContext } from '@/context/SecurityContext';
+import { useAppContext } from '@/context/AppContext';
 import { useNavigate } from 'react-router-dom';
 import { 
   Shield, 
@@ -45,6 +46,7 @@ export const TransactionRetry = ({ transactionData, onSuccess, onCancel }: Trans
   
   const { toast } = useToast();
   const { clearAlert, currentAlert } = useSecurityContext();
+  const { selectedAccount } = useAppContext(); // ADD: Get selected account from context
   const navigate = useNavigate();
 
   const handlePinVerification = async () => {
@@ -158,19 +160,33 @@ export const TransactionRetry = ({ transactionData, onSuccess, onCancel }: Trans
       console.log('Enhanced authentication details:', {
         amount: transactionData.amount,
         recipient: transactionData.recipient_account_number,
+        accountNumber: selectedAccount?.account_number || 'not available', // ADD: Log account number
         originalAlertId: originalAlertId || 'N/A',
         pinVerified: true
       });
 
       setAuthStep('transaction_processing');
 
-      // Execute transaction with PIN verification flag
+      // UPDATED: Include account_number from context in transaction data
       const enhancedTransactionData = {
         ...transactionData,
+        account_number: selectedAccount?.account_number, // ADD: Get account number from context
         is_reauth_transaction: true,
         pin_verified: true, // Mark that PIN was verified
         original_fraud_alert_id: originalAlertId
       };
+
+      // Validate that we have the account number
+      if (!enhancedTransactionData.account_number) {
+        throw new Error('Account information not available. Please refresh and try again.');
+      }
+
+      console.log('Enhanced transaction data with account:', {
+        amount: enhancedTransactionData.amount,
+        recipient: enhancedTransactionData.recipient_account_number,
+        accountNumber: enhancedTransactionData.account_number,
+        hasAccountNumber: !!enhancedTransactionData.account_number
+      });
 
       const result = await TransactionService.executeWithFIDO2Auth(enhancedTransactionData, originalAlertId);
 
@@ -249,6 +265,12 @@ export const TransactionRetry = ({ transactionData, onSuccess, onCancel }: Trans
         toast({
           title: "Biometric Authentication Unavailable",
           description: "Biometric authentication is not available on this device. Please contact support.",
+          variant: "destructive",
+        });
+      } else if (errorMessage.includes("Account information not available")) {
+        toast({
+          title: "Account Information Missing",
+          description: "Please return to dashboard and select an account, then try again.",
           variant: "destructive",
         });
       } else if (errorMessage.includes("Session expired")) {
@@ -371,6 +393,28 @@ export const TransactionRetry = ({ transactionData, onSuccess, onCancel }: Trans
 
   const stepDisplay = getStepDisplay();
 
+  // ADD: Show warning if no account selected
+  if (!selectedAccount) {
+    return (
+      <Card className="p-6">
+        <Alert className="border-red-200 bg-red-50">
+          <AlertTriangle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="text-red-800">
+            <strong>Account Not Selected:</strong> Please return to the dashboard and select an account before retrying this transaction.
+          </AlertDescription>
+        </Alert>
+        <div className="mt-4 flex space-x-3">
+          <Button onClick={() => navigate('/dashboard')} className="flex-1">
+            Return to Dashboard
+          </Button>
+          <Button variant="outline" onClick={onCancel} className="flex-1">
+            Cancel
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="p-6">
       <div className="space-y-6">
@@ -392,6 +436,10 @@ export const TransactionRetry = ({ transactionData, onSuccess, onCancel }: Trans
           <div className="flex justify-between items-center">
             <span className="text-sm text-gray-600">Amount:</span>
             <span className="font-bold text-lg">₹{transactionData.amount.toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-600">From Account:</span>
+            <span className="font-mono text-sm">***{selectedAccount.account_number.slice(-4)}</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-sm text-gray-600">To Account:</span>

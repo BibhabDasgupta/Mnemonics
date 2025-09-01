@@ -1,3 +1,4 @@
+# --- File: app/schemas/app_data.py ---
 from pydantic import BaseModel
 import uuid
 

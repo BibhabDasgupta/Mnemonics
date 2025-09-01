@@ -1,10 +1,9 @@
-# --- File: bank-app-backend/app/services/behavior_service.py ---
+# --- File: bank-app-frontend/behaviour_analysis/app/services/behavior_service.py ---
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Dict, Optional, Tuple, List
 import uuid
 import statistics
-import math
 
 from app.db.models.behavior import UserBehavior
 from app.schemas.behavior import BehaviorDataCreate
@@ -13,30 +12,30 @@ class BehaviorService:
     def __init__(self, db: Session):
         self.db = db
     
-    # ✅ RELAXED: More realistic deviation thresholds for production use
+    # Relaxed deviation thresholds for production use
     BASE_DEVIATION_THRESHOLDS = {
-        'flight_avg': 1.5,        # ±1.5 seconds (was 0.5) - typing speed varies a lot
-        'traj_avg': 50.0,         # ±50 pixels (was 25.0) - mouse movements are highly variable
-        'typing_speed': 30.0,     # ±30 chars/min (was 15.0) - typing speed varies significantly
-        'correction_rate': 10.0,  # ±10 corrections/min (was 5.0) - depends on content complexity
-        'clicks_per_minute': 25.0 # ±25 clicks/min (was 10.0) - UI interaction patterns vary widely
+        'flight_avg': 1.5,        # ±1.5 seconds - typing speed varies a lot
+        'traj_avg': 50.0,         # ±50 pixels - mouse movements are highly variable
+        'typing_speed': 30.0,     # ±30 chars/min - typing speed varies significantly
+        'correction_rate': 10.0,  # ±10 corrections/min - depends on content complexity
+        'clicks_per_minute': 25.0 # ±25 clicks/min - UI interaction patterns vary widely
     }
     
-    # ✅ RELAXED: More lenient minimum acceptable values
+    # More lenient minimum acceptable values
     MIN_ACCEPTABLE_VALUES = {
-        'flight_avg': 0.001,      # 1ms minimum (was 0.01) - very fast typists exist
-        'traj_avg': 2.0,          # 2 pixels minimum (was 5.0) - small precise movements
-        'typing_speed': 0.05,     # 0.05 chars/min minimum (was 0.1) - very slow typing ok
+        'flight_avg': 0.001,      # 1ms minimum - very fast typists exist
+        'traj_avg': 2.0,          # 2 pixels minimum - small precise movements
+        'typing_speed': 0.05,     # 0.05 chars/min minimum - very slow typing ok
         'correction_rate': 0.0,   # Can be 0 (no corrections) - unchanged
-        'clicks_per_minute': 0.05 # 0.05 clicks/min minimum (was 0.1) - minimal activity ok
+        'clicks_per_minute': 0.05 # 0.05 clicks/min minimum - minimal activity ok
     }
     
-    # ✅ RELAXED: More flexible adaptive threshold configuration
+    # More flexible adaptive threshold configuration
     ADAPTIVE_CONFIG = {
-        'min_sessions_for_adaptive': 5,      # Need at least 5 sessions (was 10) - faster adaptation
-        'std_dev_multiplier': 3.0,          # 3 standard deviations (was 2.0) - more lenient
-        'max_threshold_multiplier': 5.0,    # Maximum 5x base threshold (was 3.0) - allow more variation
-        'min_threshold_multiplier': 0.2,    # Minimum 0.2x base threshold (was 0.3) - tighter for consistent users
+        'min_sessions_for_adaptive': 5,      # Need at least 5 sessions - faster adaptation
+        'std_dev_multiplier': 3.0,          # 3 standard deviations - more lenient
+        'max_threshold_multiplier': 5.0,    # Maximum 5x base threshold - allow more variation
+        'min_threshold_multiplier': 0.2,    # Minimum 0.2x base threshold - tighter for consistent users
     }
 
     def validate_metric(self, value: float, metric_name: str) -> float:
@@ -79,15 +78,15 @@ class BehaviorService:
         
         total_problematic = zero_count + below_minimum_count
         
-        # ✅ RELAXED: Allow more zero values before rejection
+        # Allow more zero values before rejection
         if zero_count >= 4:  # Allow up to 3 zero values (was >= 3)
             return False, f"Too many zero values ({zero_count}/5 metrics are zero)"
         
-        # ✅ RELAXED: Allow more problematic values
+        # Allow more problematic values
         if total_problematic >= 5:  # Only reject if ALL metrics are problematic (was >= 4)
             return False, f"Poor data quality ({total_problematic}/5 metrics are zero or below minimum)"
         
-        # ✅ RELAXED: Only reject if BOTH mouse metrics are zero (critical for mouse activity)
+        # Only reject if BOTH mouse metrics are zero (critical for mouse activity)
         if validated_metrics['flight_avg'] == 0 and validated_metrics['traj_avg'] == 0 and validated_metrics['clicks_per_minute'] == 0:
             return False, "No meaningful user interaction detected (flight_avg, traj_avg, and clicks_per_minute all zero)"
         
@@ -180,9 +179,12 @@ class BehaviorService:
 
     def get_user_averages(self, customer_unique_id: uuid.UUID) -> Optional[Dict[str, float]]:
         """Calculate average metrics for a specific user, excluding low-quality records."""
+        # Convert UUID to string for SQLite compatibility
+        customer_id_str = str(customer_unique_id)
+        
         # Query all behavior records for this user
         all_behaviors = self.db.query(UserBehavior).filter(
-            UserBehavior.customer_unique_id == customer_unique_id
+            UserBehavior.customer_unique_id == customer_id_str
         ).all()
         
         if not all_behaviors:
@@ -264,7 +266,7 @@ class BehaviorService:
         
         print(f"\nDeviation analysis with adaptive thresholds:")
         
-        # ✅ RELAXED: Count failures but don't reject immediately
+        # Count failures but don't reject immediately
         failed_metrics = []
         
         for metric, new_val in metrics_dict.items():
@@ -282,7 +284,7 @@ class BehaviorService:
                 print(f"⚠️  WARNING: {metric} deviation ({deviation:.4f}) exceeds {threshold_type.lower()} threshold ({threshold:.4f})")
                 print(f"   Current: {new_val:.4f}, Average: {avg_val:.4f}")
         
-        # ✅ RELAXED: Only reject if multiple critical metrics fail OR one metric fails by a huge margin
+        # Only reject if multiple critical metrics fail OR one metric fails by a huge margin
         if len(failed_metrics) >= 3:  # Allow 1-2 metrics to fail
             print(f"❌ REJECTION: Too many metrics failed ({len(failed_metrics)}/5): {failed_metrics}")
             return False
@@ -356,7 +358,7 @@ class BehaviorService:
                 typing_speed=validated_metrics['typing_speed'],
                 correction_rate=validated_metrics['correction_rate'],
                 clicks_per_minute=validated_metrics['clicks_per_minute'],
-                customer_unique_id=behavior_in.customer_unique_id
+                customer_unique_id=str(behavior_in.customer_unique_id)  # Convert UUID to string
             )
             
             self.db.add(behavior_obj)
@@ -373,7 +375,7 @@ class BehaviorService:
             self.db.rollback()
             return False, None, f"Database error: {str(e)}"
 
-    # ✅ NEW: Relaxed validation methods
+    # Relaxed validation methods
     def validate_and_save_behavior_relaxed(self, behavior_data: BehaviorDataCreate) -> Tuple[bool, UserBehavior, str]:
         """
         Relaxed validation that allows more behavioral patterns through.
@@ -456,8 +458,9 @@ class BehaviorService:
     def _get_user_behavior_count(self, customer_id: uuid.UUID) -> int:
         """Get count of existing behavioral data for user."""
         try:
+            customer_id_str = str(customer_id)
             count = self.db.query(UserBehavior).filter(
-                UserBehavior.customer_unique_id == customer_id
+                UserBehavior.customer_unique_id == customer_id_str
             ).count()
             return count
         except:
@@ -532,7 +535,7 @@ class BehaviorService:
                 typing_speed=validated_metrics['typing_speed'],
                 correction_rate=validated_metrics['correction_rate'],
                 clicks_per_minute=validated_metrics['clicks_per_minute'],
-                customer_unique_id=behavior_data.customer_unique_id
+                customer_unique_id=str(behavior_data.customer_unique_id)  # Convert UUID to string
             )
             
             self.db.add(behavior_obj)

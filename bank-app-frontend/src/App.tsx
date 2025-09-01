@@ -6,7 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { AppProvider } from "@/context/AppContext";
 import ProtectedRoutes from "@/components/ProtectedRoutes";
 import SplashScreenPage from "./pages/SplashScreenPage";
@@ -27,9 +27,10 @@ import AlreadyRegisteredPage from "./pages/AlreadyRegsiteredPage";
 import NotFound from "./pages/NotFound";
 import SecurityVerificationPage from "./pages/SecurityVerificationPage";
 import SecurityGuard from "@/components/SecurityGuard";
-import { useEffect, useState } from "react";
+import { useEffect, useState, ReactNode } from "react";
 import { initIndexedDB, loadCustomerInfo } from "@/utils/deviceStateChecker";
 import { useAppContext } from "@/context/AppContext";
+import { BehavioralAnalytics } from './providers/BehavioralAnalyticsProvider';
 
 const queryClient = new QueryClient();
 
@@ -87,36 +88,73 @@ const RootRedirect = () => {
   return showSplash ? <SplashScreenPage /> : null;
 };
 
+// Wrapper component to conditionally apply the right behavioral analytics provider
+const BehavioralAnalyticsRouteWrapper = ({ children }: { children: ReactNode }) => {
+  const location = useLocation();
+  
+  // Check if current route is a restoration route
+  const isRestorationRoute = location.pathname.startsWith('/restoration/');
+  
+  console.log(`[Analytics Route Wrapper] Current path: ${location.pathname}, Is restoration route: ${isRestorationRoute}`);
+  
+  if (isRestorationRoute) {
+    return (
+      <BehavioralAnalytics.RestorationBehaviorProvider
+        endpoint="http://localhost:3000/api/v1/analytics/behavior"
+        intervalMs={30000}
+        debug={false}
+      >
+        {children}
+      </BehavioralAnalytics.RestorationBehaviorProvider>
+    );
+  } else {
+    return (
+      <BehavioralAnalytics.Provider
+        endpoint="http://localhost:3000/api/v1/analytics/behavior"
+        intervalMs={30000}
+        debug={false}
+      >
+        {children}
+      </BehavioralAnalytics.Provider>
+    );
+  }
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <SecurityGuard>
-            <Routes>
-              <Route element={<ProtectedRoutes />}>
-                <Route path="/" element={<RootRedirect />} />
-                <Route path="/landing" element={<LandingPage />} />
-                <Route path="/registration/phone" element={<PhoneNumberPage title="Registration" isOTP={false} />} />
-                <Route path="/registration/otp" element={<PhoneNumberPage title="Registration - OTP Verification" isOTP={true} />} />
-                <Route path="/registration/details" element={<RegistrationDetailsPage />} />
-                <Route path="/registration/device-verification" element={<DeviceVerificationPage />} />
-                <Route path="/registration/fido-seedkey" element={<FidoSeedKeyRegistrationPage />} />
-                <Route path="/registration/signature" element={<SignatureRegistrationPage />} />
-                <Route path="/restoration/details" element={<RestorationDetailsPage />} />
-                <Route path="/restoration/phone" element={<RestorationPhonePage title="Account Restoration" />} />
-                <Route path="/restoration/fido-seedkey" element={<FidoSeedKeyRestorationPage />} />
-                <Route path="/restoration/signature" element={<SignatureVerificationPage />} />
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/security-verification" element={<SecurityVerificationPage />} />
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/revoked" element={<RevokedPage />} />
-                <Route path="/already-registered" element={<AlreadyRegisteredPage />} />
-                <Route path="*" element={<NotFound />} />
-              </Route>
-            </Routes>
-          </SecurityGuard>
+          <BehavioralAnalyticsRouteWrapper>
+            <SecurityGuard>
+              <Routes>
+                <Route element={<ProtectedRoutes />}>
+                  <Route path="/" element={<RootRedirect />} />
+                  <Route path="/landing" element={<LandingPage />} />
+                  <Route path="/registration/phone" element={<PhoneNumberPage title="Registration" isOTP={false} />} />
+                  <Route path="/registration/otp" element={<PhoneNumberPage title="Registration - OTP Verification" isOTP={true} />} />
+                  <Route path="/registration/details" element={<RegistrationDetailsPage />} />
+                  <Route path="/registration/device-verification" element={<DeviceVerificationPage />} />
+                  <Route path="/registration/fido-seedkey" element={<FidoSeedKeyRegistrationPage />} />
+                  <Route path="/registration/signature" element={<SignatureRegistrationPage />} />
+                  
+                  {/* Restoration routes - these will be wrapped with RestorationBehaviorProvider */}
+                  <Route path="/restoration/details" element={<RestorationDetailsPage />} />
+                  <Route path="/restoration/phone" element={<RestorationPhonePage title="Account Restoration" />} />
+                  <Route path="/restoration/fido-seedkey" element={<FidoSeedKeyRestorationPage />} />
+                  <Route path="/restoration/signature" element={<SignatureVerificationPage />} />
+                  
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="/security-verification" element={<SecurityVerificationPage />} />
+                  <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/revoked" element={<RevokedPage />} />
+                  <Route path="/already-registered" element={<AlreadyRegisteredPage />} />
+                  <Route path="*" element={<NotFound />} />
+                </Route>
+              </Routes>
+            </SecurityGuard>
+          </BehavioralAnalyticsRouteWrapper>
         </BrowserRouter>
       </TooltipProvider>
   </QueryClientProvider>

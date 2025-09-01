@@ -2,22 +2,16 @@
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
-import { BehavioralAnalytics } from './providers/BehavioralAnalyticsProvider.tsx';
 import { AppProvider } from "@/context/AppContext.tsx";
 import { SecurityProvider } from "@/context/SecurityContext.tsx";
 import { LocationProvider } from "@/context/LocationContext.tsx";
 
+// Remove the BehavioralAnalytics provider from here - it will be applied per route group in App.tsx
 createRoot(document.getElementById("root")!).render(
     <AppProvider>
         <SecurityProvider>
             <LocationProvider>
-                <BehavioralAnalytics.Provider
-                    endpoint="http://localhost:8000/api/v1/analytics/behavior"
-                    intervalMs={6000000}
-                    debug={false}
-                >
-                    <App />
-                </BehavioralAnalytics.Provider>
+                <App />
             </LocationProvider>
         </SecurityProvider>
     </AppProvider>
