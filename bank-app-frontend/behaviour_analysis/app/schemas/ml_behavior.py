@@ -50,7 +50,7 @@ class MLModelInfoResponse(BaseModel):
 
 class AutoTrainRequest(BaseModel):
     """Request model for auto-training all eligible users."""
-    min_sessions: int = Field(default=30, ge=5, description="Minimum sessions required for training")
+    min_sessions: int = Field(default=40, ge=5, description="Minimum sessions required for training")
 
 class AutoTrainResponse(BaseModel):
     """Response model for auto-training results."""

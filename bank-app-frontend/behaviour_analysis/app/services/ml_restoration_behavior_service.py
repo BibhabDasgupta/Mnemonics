@@ -13,10 +13,10 @@ from datetime import datetime
 from app.db.models.behavior import UserBehavior
 from app.db.base import get_db
 
-class MLBehaviorService:
+class MLRestorationBehaviorService:
     def __init__(self, db: Session):
         self.db = db
-        self.model_dir = "app/ml_models/user_specific_models"
+        self.model_dir = "../../bank-app-backend/app/ml_models/user_specific_models/"
         self.ensure_model_directory()
     
     def ensure_model_directory(self):
