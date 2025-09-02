@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+# Enhanced registration endpoints with proper device tracking and SMS notifications
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.db.base import get_db
 from app.schemas.user import (
@@ -10,17 +11,45 @@ from app.schemas.user import (
 from app.services.otp_service import decrypt_phone_number, decrypt_data
 from app.services.fido_seedkey_service import start_fido_registration, register_fido_seedkey
 from app.services import (otp_service, signature_service)
+from app.services.sms_service import SMSService
+from app.services.seedkey_attempt_service import SeedkeyAttemptService
 from app.db.models.user import Account, AppData
 from datetime import datetime
 import uuid
 from sqlalchemy.sql import text
 from pydantic import EmailStr
 import json
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
+def get_device_info(request: Request) -> dict:
+    """Extract device and location info from request"""
+    user_agent = request.headers.get("user-agent", "Unknown")
+    ip_address = request.client.host if request.client else "Unknown"
+    
+    # Simple device detection
+    device_info = "Unknown Device"
+    if "Chrome" in user_agent:
+        device_info = "Chrome Browser"
+    elif "Firefox" in user_agent:
+        device_info = "Firefox Browser"
+    elif "Safari" in user_agent:
+        device_info = "Safari Browser"
+    elif "Edge" in user_agent:
+        device_info = "Edge Browser"
+    
+    return {
+        "user_agent": user_agent,
+        "ip_address": ip_address,
+        "device_info": device_info,
+        "location": "Location data from frontend"  # Will be updated from frontend
+    }
+
 @router.post("/register/otp/send")
-def send_otp(request: PhoneVerificationRequest, db: Session = Depends(get_db)):
+def send_otp(request: PhoneVerificationRequest, http_request: Request, db: Session = Depends(get_db)):
+    device_info = get_device_info(http_request)
     try:
         phone_number = otp_service.decrypt_phone_number(
             request.encrypted_phone_number
@@ -57,10 +86,12 @@ def send_otp(request: PhoneVerificationRequest, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Registration OTP send error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/register/otp/verify")
-def verify_otp(request: OTPVerificationRequest, db: Session = Depends(get_db)):
+def verify_otp(request: OTPVerificationRequest, http_request: Request, db: Session = Depends(get_db)):
+    device_info = get_device_info(http_request)
     try:
         phone_number = otp_service.decrypt_phone_number(
             request.encrypted_phone_number
@@ -94,15 +125,13 @@ def verify_otp(request: OTPVerificationRequest, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Registration OTP verify error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.post("/register/complete")
-async def complete_registration(customer_data: CustomerCreate, db: Session = Depends(get_db)):
+async def complete_registration(customer_data: CustomerCreate, http_request: Request, db: Session = Depends(get_db)):
+    device_info = get_device_info(http_request)
     try:
-        # Log incoming payload
-        # print(f"Incoming payload: {customer_data.dict()}")
-
         # Decrypt the incoming encrypted fields
         try:
             customer_id = otp_service.decrypt_data(customer_data.encrypted_customer_id)
@@ -114,12 +143,10 @@ async def complete_registration(customer_data: CustomerCreate, db: Session = Dep
         except ValueError as e:
             raise HTTPException(status_code=422, detail=f"Decryption failed: {str(e)}")
         
-        # print(f"Decrypted data: customer_id={customer_id}, phone_number={phone_number}, name={name}, email={email}, aadhaar_number={aadhaar_number}, date_of_birth={date_of_birth}")
         try:
             datetime.strptime(date_of_birth, '%Y-%m-%d')
         except ValueError as ve:
             raise HTTPException(status_code=422, detail="Invalid date format for date_of_birth, expected YYYY-MM-DD")
-        
         
         # Verify details against accounts table
         query = text("""
@@ -176,12 +203,12 @@ async def complete_registration(customer_data: CustomerCreate, db: Session = Dep
         raise
     except Exception as e:
         db.rollback()
+        logger.error(f"Registration complete error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
-
-
 @router.post("/register/device-check")
-async def device_check(data: dict, db: Session = Depends(get_db)):
+async def device_check(data: dict, http_request: Request, db: Session = Depends(get_db)):
+    device_info = get_device_info(http_request)
     try:
         if not data or 'phoneNumber' not in data or 'customerId' not in data or 'checkType' not in data:
             raise HTTPException(status_code=400, detail="Missing phoneNumber, customerId, or checkType")
@@ -228,7 +255,6 @@ async def device_check(data: dict, db: Session = Depends(get_db)):
         stored_data = None
         if result[0]:
             if isinstance(result[0], dict):
-                # Handle case where ORM deserializes JSON into a dict
                 stored_data = result[0]
             elif isinstance(result[0], str):
                 try:
@@ -249,11 +275,12 @@ async def device_check(data: dict, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Device check error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Device check failed: {str(e)}")
 
-
 @router.post("/register/signature")
-async def register_signature(data: dict, db: Session = Depends(get_db)):
+async def register_signature(data: dict, http_request: Request, db: Session = Depends(get_db)):
+    device_info = get_device_info(http_request)
     try:
         if not data or 'phoneNumber' not in data or 'customerId' not in data or 'signature' not in data:
             raise HTTPException(status_code=400, detail="Missing phoneNumber, customerId, or signature")
@@ -294,12 +321,12 @@ async def register_signature(data: dict, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         db.rollback()
+        logger.error(f"Signature registration error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Signature registration failed: {str(e)}")
-    
-
 
 @router.post("/register/fido-start")
-async def fido_start_registration(data: dict, db: Session = Depends(get_db)):
+async def fido_start_registration(data: dict, http_request: Request, db: Session = Depends(get_db)):
+    device_info = get_device_info(http_request)
     try:
         if not data or 'customer_id' not in data:
             raise HTTPException(status_code=400, detail="Missing customer_id")
@@ -314,11 +341,12 @@ async def fido_start_registration(data: dict, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"FIDO registration start error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"FIDO registration start failed: {str(e)}")
-    
 
 @router.post("/register/fido-seedkey")
-async def register_fido_seedkey_route(data: dict, db: Session = Depends(get_db)):
+async def register_fido_seedkey_route(data: dict, http_request: Request, db: Session = Depends(get_db)):
+    device_info = get_device_info(http_request)
     try:
         if not data or 'phoneNumber' not in data or 'customerId' not in data or 'fidoData' not in data or 'seedData' not in data:
             raise HTTPException(status_code=400, detail="Missing required fields")
@@ -340,19 +368,54 @@ async def register_fido_seedkey_route(data: dict, db: Session = Depends(get_db))
         except ValueError as e:
             raise HTTPException(status_code=422, detail=f"Decryption failed: {str(e)}")
         
+        # Complete FIDO and seedkey registration
         await register_fido_seedkey(db, phone_number, customer_id, fido_data, seed_data)
+        
+        # Add device info to other_details for registration tracking
+        try:
+            SeedkeyAttemptService.add_device_info_to_other_details(
+                db=db,
+                customer_id=customer_id,
+                action_type="registration",
+                device_info=device_info["device_info"],
+                location=device_info["location"],
+                ip_address=device_info["ip_address"],
+                additional_info={
+                    "user_agent": device_info["user_agent"],
+                    "registration_type": "fido_seedkey"
+                }
+            )
+            logger.info(f"Registration device info tracked successfully for customer {customer_id}")
+        except Exception as device_error:
+            logger.error(f"Failed to track registration device info for customer {customer_id}: {str(device_error)}")
+            # Don't fail registration due to tracking issues
+        
+        # Send SMS notification for successful registration
+        try:
+            SMSService.send_registration_notification(
+                db=db,
+                customer_id=customer_id,
+                device_info=device_info["device_info"],
+                location=device_info["location"],
+                ip_address=device_info["ip_address"]
+            )
+            logger.info(f"Registration SMS sent successfully for customer {customer_id}")
+        except Exception as sms_error:
+            logger.error(f"Failed to send registration SMS for customer {customer_id}: {str(sms_error)}")
+            # Don't fail the registration due to SMS issues
+        
         return {"status": "FIDO2 and seed key registered successfully"}
         
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
+        logger.error(f"FIDO seedkey registration error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"FIDO2 and seed key registration failed: {str(e)}")
 
-
-
 @router.post("/register/device-complete")
-async def complete_device_verification(data: PhoneVerificationRequest, db: Session = Depends(get_db)):
+async def complete_device_verification(data: PhoneVerificationRequest, http_request: Request, db: Session = Depends(get_db)):
+    device_info = get_device_info(http_request)
     try:
         phone_number = otp_service.decrypt_data(data.encrypted_phone_number)
         
@@ -368,30 +431,25 @@ async def complete_device_verification(data: PhoneVerificationRequest, db: Sessi
         })
         
         db.commit()
+        
+        logger.info(f"Device verification completed successfully for phone: {phone_number[:6]}****")
         return {"status": "Device verification completed successfully"}
         
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
+        logger.error(f"Device verification complete error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Device verification failed: {str(e)}")
 
-
-
-# Add this endpoint to your registration.py file (after the existing endpoints)
-
+# Keep existing endpoints for customer phone and verification
 @router.get("/customer/{customer_id}/phone")
 async def get_customer_phone(customer_id: str, db: Session = Depends(get_db)):
-    """
-    Get phone number for a customer by customer_id from app_data table.
-    Used for OTP verification during transactions.
-    """
+    """Get phone number for a customer by customer_id from app_data table."""
     try:
-        # Validate customer_id format (basic validation)
         if not customer_id or len(customer_id.strip()) == 0:
             raise HTTPException(status_code=400, detail="Invalid customer ID format")
         
-        # Query app_data table for phone number
         query = text("""
             SELECT phone_number, app_access_revoked
             FROM app_data
@@ -402,11 +460,9 @@ async def get_customer_phone(customer_id: str, db: Session = Depends(get_db)):
         if not result:
             raise HTTPException(status_code=404, detail="Customer not found")
         
-        # Check if app access is revoked
         if result.app_access_revoked:
             raise HTTPException(status_code=403, detail="Customer access has been revoked")
         
-        # Check if phone number exists
         if not result.phone_number:
             raise HTTPException(status_code=404, detail="Phone number not found for customer")
         
@@ -418,17 +474,12 @@ async def get_customer_phone(customer_id: str, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Get customer phone error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-
-
-# Optional: Add this endpoint if you want to verify customer exists before fetching phone
 @router.get("/customer/{customer_id}/verify")
 async def verify_customer_exists(customer_id: str, db: Session = Depends(get_db)):
-    """
-    Verify if a customer exists and has valid app access.
-    Returns customer basic info without sensitive data.
-    """
+    """Verify if a customer exists and has valid app access."""
     try:
         if not customer_id or len(customer_id.strip()) == 0:
             raise HTTPException(status_code=400, detail="Invalid customer ID format")
@@ -456,21 +507,18 @@ async def verify_customer_exists(customer_id: str, db: Session = Depends(get_db)
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Verify customer error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-
-
 @router.post("/transaction/otp/send")
-def send_transaction_otp(request: PhoneVerificationRequest, db: Session = Depends(get_db)):
-    """
-    Send OTP for transaction verification (allows registered users)
-    """
+def send_transaction_otp(request: PhoneVerificationRequest, http_request: Request, db: Session = Depends(get_db)):
+    """Send OTP for transaction verification (allows registered users)"""
+    device_info = get_device_info(http_request)
     try:
         phone_number = otp_service.decrypt_phone_number(
             request.encrypted_phone_number
         )
         
-        # Check if user exists and is not revoked
         customer = otp_service.check_phone_number(db, phone_number)
         
         if customer["status"] == "revoked":
@@ -485,7 +533,6 @@ def send_transaction_otp(request: PhoneVerificationRequest, db: Session = Depend
                 detail="Customer not found in system."
             )
         
-        # Allow registered users to receive OTP for transactions
         otp_service.send_otp(phone_number, "transaction")
         
         return {
@@ -497,15 +544,13 @@ def send_transaction_otp(request: PhoneVerificationRequest, db: Session = Depend
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Transaction OTP send error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-
 @router.post("/transaction/otp/verify")
-def verify_transaction_otp(request: OTPVerificationRequest, db: Session = Depends(get_db)):
-    """
-    Verify OTP for transaction
-    """
+def verify_transaction_otp(request: OTPVerificationRequest, http_request: Request, db: Session = Depends(get_db)):
+    """Verify OTP for transaction"""
+    device_info = get_device_info(http_request)
     try:
         phone_number = otp_service.decrypt_phone_number(
             request.encrypted_phone_number
@@ -519,4 +564,5 @@ def verify_transaction_otp(request: OTPVerificationRequest, db: Session = Depend
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Transaction OTP verify error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

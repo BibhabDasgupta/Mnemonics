@@ -1,3 +1,4 @@
+# Enhanced database models with device tracking and seedkey attempts
 from sqlalchemy import Column, Integer, String, LargeBinary, DateTime, Boolean, Numeric, Date, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -29,6 +30,7 @@ class Transaction(Base):
     is_fraud = Column(Boolean, default=False, nullable=False)
     is_reauth_transaction = Column(Boolean, default=False, nullable=False)
     auth_method = Column(String, nullable=True)
+    recipient_name = Column(String, nullable=True)  # Added for SMS notifications
 
     account = relationship("Account", back_populates="transactions")
 
@@ -63,7 +65,7 @@ class AppData(Base):
     last_logged_in_ip = Column(String, nullable=True)
     last_logged_in_location = Column(String, nullable=True)
     last_logged_in_time = Column(DateTime(timezone=True), nullable=True)
-    other_details = Column(JSONB, nullable=True, default='[]')
+    other_details = Column(JSONB, nullable=True, default='[]')  # Enhanced to store device history
     no_of_logged_in_devices = Column(Integer, default=0, nullable=False)
     last_restored_at = Column(DateTime(timezone=True), nullable=True)
     is_restoration_limited = Column(Boolean, default=False, nullable=False)
@@ -71,3 +73,36 @@ class AppData(Base):
     restoration_limit_expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    failed_login_attempts = Column(Integer, default=0, nullable=False)
+    login_blocked_until = Column(DateTime(timezone=True), nullable=True)
+    last_failed_attempt_time = Column(DateTime(timezone=True), nullable=True)
+    
+    # New fields for seedkey attempt tracking
+    seedkey_failed_attempts = Column(Integer, default=0, nullable=False)
+    seedkey_blocked_until = Column(DateTime(timezone=True), nullable=True)
+    last_seedkey_attempt_time = Column(DateTime(timezone=True), nullable=True)
+
+class LoginAttempt(Base):
+    __tablename__ = "login_attempts"
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(String, nullable=False, index=True)
+    attempt_time = Column(DateTime(timezone=True), server_default=func.now())
+    success = Column(Boolean, nullable=False)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+    device_info = Column(String, nullable=True)
+    location = Column(String, nullable=True)
+    failure_reason = Column(String, nullable=True)
+
+class SeedkeyAttempt(Base):
+    """New table to track seedkey verification attempts"""
+    __tablename__ = "seedkey_attempts"
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(String, nullable=False, index=True)
+    attempt_time = Column(DateTime(timezone=True), server_default=func.now())
+    success = Column(Boolean, nullable=False)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+    device_info = Column(String, nullable=True)
+    location = Column(String, nullable=True)
+    failure_reason = Column(String, nullable=True)

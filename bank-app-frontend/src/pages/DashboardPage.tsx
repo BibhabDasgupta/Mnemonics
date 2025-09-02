@@ -125,11 +125,45 @@ const DashboardPage = () => {
     setHasInitialized(false);
   }, [customerId]);
 
-  const handleLogout = useCallback(() => {
-    document.cookie = 'auth_token=; max-age=0; path=/; Secure; SameSite=Strict';
-    setHasInitialized(false);
-    navigate('/login', { replace: true });
-  }, [navigate]);
+  
+   const handleLogout = useCallback(async () => {
+    try {
+      // Call logout endpoint to decrease logged in devices count
+      if (customerId) {
+        console.log('Calling logout API for customer:', customerId);
+        const response = await fetch('http://localhost:8000/api/v1/logout', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            customer_id: customerId
+          })
+        });
+
+        // Don't block logout if API call fails
+        if (response.ok) {
+          const result = await response.json();
+          console.log('Logout API response:', result);
+          toast.success('Logged out successfully');
+        } else {
+          console.warn('Logout API call failed, but proceeding with logout');
+          toast.warning('Logout completed (with minor issues)');
+        }
+      }
+    } catch (error) {
+      // Don't block logout if API call fails
+      console.warn('Logout API call error, but proceeding with logout:', error);
+      toast.warning('Logout completed (with minor issues)');
+    } finally {
+      // Always proceed with local logout regardless of API call result
+      document.cookie = 'auth_token=; max-age=0; path=/; Secure; SameSite=Strict';
+      setHasInitialized(false);
+      console.log('Local logout completed, navigating to login page');
+      navigate('/login', { replace: true });
+    }
+  }, [navigate, customerId]);
+
 
   // If we don't have basic requirements, show loading
   if (!customerId || !selectedAccount || isLoading || !hasInitialized) {
