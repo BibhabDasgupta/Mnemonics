@@ -151,7 +151,7 @@ export const TransactionRetry = ({ transactionData, onSuccess, onCancel }: Trans
       
       toast({
         title: "Biometric Authentication Required",
-        description: "Please authenticate using your fingerprint, face, or Windows Hello.",
+        description: "Please authenticate using your fingerprint, face, or Windows Hello/TouchID.",
         variant: "default",
       });
 

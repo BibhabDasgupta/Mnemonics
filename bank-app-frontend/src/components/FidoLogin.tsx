@@ -95,7 +95,7 @@ const FidoLogin = ({ onSuccess, customerName }: FidoLoginProps) => {
 
     const available = await checkWindowsHelloAvailability();
     if (!available) {
-      setError('Windows Hello is not available on this device.');
+      setError('Windows Hello/TouchID is not available on this device.');
       return;
     }
 
