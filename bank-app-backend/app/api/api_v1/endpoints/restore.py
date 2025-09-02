@@ -2,20 +2,46 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db.base import get_db
-from app.schemas.user import PhoneVerificationRequest, CustomerCreate, FidoLoginStartRequest
+from app.schemas.user import PhoneVerificationRequest, CustomerCreate, FidoLoginStartRequest, MnemonicAttemptRequest
 from app.services.fido_seedkey_service import start_fido_registration, register_fido_seedkey
 from app.services.otp_service import decrypt_phone_number, check_phone_number, decrypt_data
 from app.services.restoration_limit_service import RestorationLimitService
+from app.services.sms_service import SMSService
+from app.services.seedkey_attempt_service import SeedkeyAttemptService
 from webauthn.helpers import bytes_to_base64url, base64url_to_bytes
 from app.services import signature_service
-from app.db.models.user import AppData, Seedkey, Passkey
+from app.db.models.user import AppData, Seedkey, Passkey, SeedkeyAttempt
 from sqlalchemy.sql import text
 import logging
-from sqlalchemy.sql import text
 from datetime import datetime
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+
+def get_device_info(request: Request) -> dict:
+    """Extract device and location info from request"""
+    user_agent = request.headers.get("user-agent", "Unknown")
+    ip_address = request.client.host if request.client else "Unknown"
+    
+    # Simple device detection
+    device_info = "Unknown Device"
+    if "Chrome" in user_agent:
+        device_info = "Chrome Browser"
+    elif "Firefox" in user_agent:
+        device_info = "Firefox Browser"
+    elif "Safari" in user_agent:
+        device_info = "Safari Browser"
+    elif "Edge" in user_agent:
+        device_info = "Edge Browser"
+    
+    return {
+        "user_agent": user_agent,
+        "ip_address": ip_address,
+        "device_info": device_info,
+        "location": "Location data from frontend"  # Will be updated from frontend
+    }
 
 def post_restoration_setup(db: Session, customer_id: str) -> dict:
     """Setup post-restoration security measures"""
@@ -42,7 +68,8 @@ def post_restoration_setup(db: Session, customer_id: str) -> dict:
         }
 
 @router.post("/restore/check")
-async def check_restoration_phone(request: PhoneVerificationRequest, db: Session = Depends(get_db)):
+async def check_restoration_phone(request: PhoneVerificationRequest, http_request: Request, db: Session = Depends(get_db)):
+    device_info = get_device_info(http_request)
     try:
         # Decrypt the phone number
         phone_number = decrypt_phone_number(request.encrypted_phone_number)
@@ -96,7 +123,8 @@ async def check_restoration_phone(request: PhoneVerificationRequest, db: Session
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @router.post("/restore/complete")
-async def complete_restoration(customer_data: CustomerCreate, db: Session = Depends(get_db)):
+async def complete_restoration(customer_data: CustomerCreate, http_request: Request, db: Session = Depends(get_db)):
+    device_info = get_device_info(http_request)
     try:
         # Decrypt the incoming encrypted fields
         try:
@@ -148,7 +176,6 @@ async def complete_restoration(customer_data: CustomerCreate, db: Session = Depe
         ):
             raise HTTPException(status_code=422, detail="Details do not match app data records")
         
-       
         return {
             "status": "Restoration details verified successfully",
             "customer_id": customer_id,
@@ -163,7 +190,8 @@ async def complete_restoration(customer_data: CustomerCreate, db: Session = Depe
         raise HTTPException(status_code=500, detail=f"Restoration failed: {str(e)}")
 
 @router.post("/restore/fido-start")
-async def fido_start_restoration(data: FidoLoginStartRequest, db: Session = Depends(get_db)):
+async def fido_start_restoration(data: FidoLoginStartRequest, http_request: Request, db: Session = Depends(get_db)):
+    device_info = get_device_info(http_request)
     try:
         customer_id = decrypt_data(data.customer_id)
         return start_fido_registration(db, customer_id)
@@ -176,7 +204,13 @@ async def fido_start_restoration(data: FidoLoginStartRequest, db: Session = Depe
         raise HTTPException(status_code=500, detail=f"FIDO restoration start failed: {str(e)}")
 
 @router.post("/restore/fido-seedkey")
-async def restore_fido_seedkey(data: dict, db: Session = Depends(get_db)):
+async def restore_fido_seedkey(data: dict, http_request: Request, db: Session = Depends(get_db)):
+    device_info = get_device_info(http_request)
+    ip_address = device_info["ip_address"]
+    user_agent = device_info["user_agent"]
+    location = device_info["location"]
+    device_str = device_info["device_info"]
+    
     try:
         if not data or 'phoneNumber' not in data or 'customerId' not in data or 'fidoData' not in data or 'seedData' not in data:
             raise HTTPException(status_code=400, detail="Missing required fields")
@@ -198,15 +232,86 @@ async def restore_fido_seedkey(data: dict, db: Session = Depends(get_db)):
         except ValueError as e:
             raise HTTPException(status_code=422, detail=f"Decryption failed: {str(e)}")
         
-        # Verify seed key public key against seedkeys table
+        # FIXED: Check lockout status FIRST before any processing
+        is_locked, unlock_time = SeedkeyAttemptService.is_seedkey_locked(db, customer_id)
+        if is_locked:
+            lockout_info = SeedkeyAttemptService.get_seedkey_lockout_info(db, customer_id)
+            logger.warning(f"Seedkey restoration attempted while locked for customer {customer_id}")
+            raise HTTPException(
+                status_code=423,
+                detail={
+                    "message": "Seedkey restoration is locked due to multiple failed attempts",
+                    "lockout_info": lockout_info
+                }
+            )
+        
+        # Verify seed key against database
         seedkey = db.query(Seedkey).filter(Seedkey.customer_id == customer_id, Seedkey.user_id == seed_data['userId']).first()
+        
+        verification_success = False
+        failure_reason = None
+        
         if not seedkey:
-            raise HTTPException(status_code=404, detail="Seed key not found for this customer")
+            failure_reason = "Seed key not found for this customer"
+        elif seedkey.public_key.lower() != seed_data['publicKey'].lower():
+            failure_reason = "Seed key public key does not match stored key"
+        else:
+            verification_success = True
         
-        if seedkey.public_key.lower() != seed_data['publicKey'].lower():
-            raise HTTPException(status_code=422, detail="Seed key public key does not match stored key")
+        # FIXED: Log attempt and handle response properly
+        SeedkeyAttemptService.log_seedkey_attempt(
+            db=db,
+            customer_id=customer_id,
+            success=verification_success,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            device_info=device_str,
+            location=location,
+            failure_reason=failure_reason
+        )
         
-        # Store new FIDO2 passkey
+        if not verification_success:
+            # FIXED: Get proper attempt tracking response
+            is_blocked, attempts_remaining = SeedkeyAttemptService.check_and_update_failed_attempts(db, customer_id, False)
+            
+            logger.warning(f"Seedkey restoration failed for customer {customer_id}: {failure_reason}. Attempts remaining: {attempts_remaining}")
+            
+            # Send SMS notification
+            try:
+                SMSService.send_seedkey_attempt_notification(
+                    db=db,
+                    customer_id=customer_id,
+                    attempts_remaining=attempts_remaining,
+                    device_info=device_str,
+                    is_final_attempt=is_blocked
+                )
+                logger.info(f"SMS notification sent for failed seedkey attempt. Customer: {customer_id}")
+            except Exception as sms_error:
+                logger.error(f"Failed to send seedkey attempt SMS: {str(sms_error)}")
+            
+            if is_blocked:
+                lockout_info = SeedkeyAttemptService.get_seedkey_lockout_info(db, customer_id)
+                raise HTTPException(
+                    status_code=423,
+                    detail={
+                        "message": "Seedkey restoration locked for 24 hours after 3 failed attempts",
+                        "lockout_info": lockout_info
+                    }
+                )
+            
+            raise HTTPException(
+                status_code=422, 
+                detail={
+                    "message": failure_reason,
+                    "attempts_remaining": attempts_remaining,
+                    "failed_attempts": 3 - attempts_remaining
+                }
+            )
+        
+        # SUCCESS: Reset failed attempts and continue with restoration
+        SeedkeyAttemptService.check_and_update_failed_attempts(db, customer_id, True)
+        logger.info(f"Seedkey restoration verification successful for customer {customer_id}")
+        
         try:
             credential_id_bytes = base64url_to_bytes(fido_data['credentialId'])
             public_key_bytes = base64url_to_bytes(fido_data['publicKey'])
@@ -224,11 +329,9 @@ async def restore_fido_seedkey(data: dict, db: Session = Depends(get_db)):
         db.add(passkey)
         db.commit()
         
-        # ===== NEW: ACTIVATE POST-RESTORATION LIMITS =====
         logger.info(f"Account restoration completed successfully for customer: {customer_id}")
         logger.info(f"Activating post-restoration security limits for customer: {customer_id}")
         
-        # Activate restoration limits
         restoration_setup = post_restoration_setup(db, customer_id)
         
         if restoration_setup["limits_activated"]:
@@ -236,7 +339,33 @@ async def restore_fido_seedkey(data: dict, db: Session = Depends(get_db)):
         else:
             logger.warning(f"Failed to activate post-restoration limits: {customer_id}")
         
-        # Enhanced response with restoration limit information
+        SeedkeyAttemptService.add_device_info_to_other_details(
+            db=db,
+            customer_id=customer_id,
+            action_type="restoration",
+            device_info=device_str,
+            location=location,
+            ip_address=ip_address,
+            additional_info={
+                "user_agent": user_agent,
+                "restoration_type": "fido_seedkey",
+                "restoration_limits_activated": restoration_setup["limits_activated"]
+            }
+        )
+        
+        try:
+            SMSService.send_restoration_notification(
+                db=db,
+                customer_id=customer_id,
+                device_info=device_str,
+                location=location,
+                ip_address=ip_address,
+                restoration_limits_info=restoration_setup.get("restoration_info", {})
+            )
+            logger.info(f"Restoration SMS sent successfully for customer {customer_id}")
+        except Exception as sms_error:
+            logger.error(f"Failed to send restoration SMS for customer {customer_id}: {str(sms_error)}")
+        
         return {
             "status": "FIDO2 and seed key restored successfully",
             "customer_id": customer_id,
@@ -257,9 +386,11 @@ async def restore_fido_seedkey(data: dict, db: Session = Depends(get_db)):
         db.rollback()
         logger.error(f"FIDO2 and seed key restoration failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"FIDO2 and seed key restoration failed: {str(e)}")
+    
 
 @router.post("/restore/check-signature")
-async def check_signature(data: dict, db: Session = Depends(get_db)):
+async def check_signature(data: dict, http_request: Request, db: Session = Depends(get_db)):
+    device_info = get_device_info(http_request)
     try:
         if not data or 'phoneNumber' not in data or 'customerId' not in data:
             raise HTTPException(status_code=400, detail="Missing phoneNumber or customerId")
@@ -270,7 +401,6 @@ async def check_signature(data: dict, db: Session = Depends(get_db)):
         except ValueError as e:
             raise HTTPException(status_code=422, detail=f"Decryption failed: {str(e)}")
         
-        # Check app_data for signature in other_details
         query = text("""
             SELECT other_details
             FROM app_data
@@ -304,8 +434,12 @@ async def check_signature(data: dict, db: Session = Depends(get_db)):
         logger.error(f"Error checking signature: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error checking signature: {str(e)}")
 
+
+
+
 @router.post("/restore/signature")
-async def verify_signature(data: dict, db: Session = Depends(get_db)):
+async def verify_signature(data: dict, http_request: Request, db: Session = Depends(get_db)):
+    device_info = get_device_info(http_request)
     try:
         if not data or 'phoneNumber' not in data or 'customerId' not in data or 'signature' not in data:
             raise HTTPException(status_code=400, detail="Missing required fields")
@@ -361,10 +495,9 @@ async def verify_signature(data: dict, db: Session = Depends(get_db)):
         logger.error(f"Signature verification failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Signature verification failed: {str(e)}")
 
-
-
 @router.post("/restore/verify-seedkey")
-async def verify_seedkey(data: dict, db: Session = Depends(get_db)):
+async def verify_seedkey(data: dict, http_request: Request, db: Session = Depends(get_db)):
+    device_info = get_device_info(http_request)
     try:
         if not data or 'phoneNumber' not in data or 'customerId' not in data or 'seedData' not in data:
             raise HTTPException(status_code=400, detail="Missing required fields")
@@ -379,13 +512,83 @@ async def verify_seedkey(data: dict, db: Session = Depends(get_db)):
         except ValueError as e:
             raise HTTPException(status_code=422, detail=f"Decryption failed: {str(e)}")
         
+        # Check if seedkey is currently locked BEFORE any attempt
+        is_locked, unlock_time = SeedkeyAttemptService.is_seedkey_locked(db, customer_id)
+        if is_locked:
+            lockout_info = SeedkeyAttemptService.get_seedkey_lockout_info(db, customer_id)
+            logger.warning(f"Seedkey verification attempted while locked for customer {customer_id}")
+            raise HTTPException(
+                status_code=423,
+                detail={
+                    "message": "Seedkey verification is locked due to multiple failed attempts",
+                    "lockout_info": lockout_info
+                }
+            )
+        
         # Verify seed key public key against seedkeys table
         seedkey = db.query(Seedkey).filter(Seedkey.customer_id == customer_id, Seedkey.user_id == seed_data['userId']).first()
-        if not seedkey:
-            raise HTTPException(status_code=404, detail="Seed key not found for this customer")
         
-        if seedkey.public_key.lower() != seed_data['publicKey'].lower():
-            raise HTTPException(status_code=422, detail="Seed key public key does not match stored key")
+        verification_success = False
+        failure_reason = None
+        
+        if not seedkey:
+            failure_reason = "Seed key not found for this customer"
+        elif seedkey.public_key.lower() != seed_data['publicKey'].lower():
+            failure_reason = "Seed key public key does not match stored key"
+        else:
+            verification_success = True
+        
+        # Log the attempt with proper success/failure
+        SeedkeyAttemptService.log_seedkey_attempt(
+            db=db,
+            customer_id=customer_id,
+            success=verification_success,
+            ip_address=device_info["ip_address"],
+            user_agent=device_info["user_agent"],
+            device_info=device_info["device_info"],
+            location=device_info["location"],
+            failure_reason=failure_reason
+        )
+        
+        if not verification_success:
+            # Update failed attempts and check if blocked
+            is_blocked, attempts_remaining = SeedkeyAttemptService.check_and_update_failed_attempts(db, customer_id, False)
+            
+            logger.warning(f"Seedkey verification failed for customer {customer_id}: {failure_reason}. Attempts remaining: {attempts_remaining}")
+            
+            # Send SMS notification for failed attempt
+            try:
+                SMSService.send_seedkey_attempt_notification(
+                    db=db,
+                    customer_id=customer_id,
+                    attempts_remaining=attempts_remaining,
+                    device_info=device_info["device_info"],
+                    is_final_attempt=is_blocked
+                )
+            except Exception as sms_error:
+                logger.error(f"Failed to send seedkey attempt SMS: {str(sms_error)}")
+            
+            if is_blocked:
+                lockout_info = SeedkeyAttemptService.get_seedkey_lockout_info(db, customer_id)
+                raise HTTPException(
+                    status_code=423,
+                    detail={
+                        "message": "Seedkey verification locked for 24 hours after 3 failed attempts",
+                        "lockout_info": lockout_info
+                    }
+                )
+            
+            raise HTTPException(
+                status_code=422, 
+                detail={
+                    "message": failure_reason,
+                    "attempts_remaining": attempts_remaining
+                }
+            )
+        
+        # Success - reset failed attempts 
+        SeedkeyAttemptService.check_and_update_failed_attempts(db, customer_id, True)
+        logger.info(f"Seedkey verification successful for customer {customer_id}")
         
         return {"status": "Seed key verified successfully"}
         
@@ -395,3 +598,99 @@ async def verify_seedkey(data: dict, db: Session = Depends(get_db)):
         db.rollback()
         logger.error(f"Seed key verification failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Seed key verification failed: {str(e)}")
+
+@router.get("/restore/seedkey-status/{customer_id}")
+async def get_seedkey_status(customer_id: str, db: Session = Depends(get_db)):
+    """Get current seedkey lockout status for a customer"""
+    try:
+        lockout_info = SeedkeyAttemptService.get_seedkey_lockout_info(db, customer_id)
+        return {
+            "status": "success",
+            "customer_id": customer_id,
+            "seedkey_status": lockout_info
+        }
+    except Exception as e:
+        logger.error(f"Failed to get seedkey status: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get seedkey status: {str(e)}")
+
+
+
+@router.post("/restore/log-mnemonic-attempt")
+async def log_mnemonic_attempt(data: MnemonicAttemptRequest, http_request: Request, db: Session = Depends(get_db)):
+    """Log a mnemonic verification attempt for CLIENT-SIDE failures (invalid format, derivation errors)"""
+    try:
+        customer_id = data.customerId
+        
+        # Check if already locked
+        is_locked, unlock_time = SeedkeyAttemptService.is_seedkey_locked(db, customer_id)
+        if is_locked:
+            lockout_info = SeedkeyAttemptService.get_seedkey_lockout_info(db, customer_id)
+            logger.warning(f"Client-side mnemonic attempt while locked for customer {customer_id}")
+            raise HTTPException(
+                status_code=423,
+                detail={
+                    "message": "Mnemonic verification locked due to multiple failed attempts",
+                    "lockout_info": lockout_info
+                }
+            )
+        
+        # Log the attempt
+        SeedkeyAttemptService.log_seedkey_attempt(
+            db=db,
+            customer_id=customer_id,
+            success=data.success,
+            ip_address=data.deviceInfo['ip_address'],
+            user_agent=data.deviceInfo['user_agent'],
+            device_info=data.deviceInfo['device_info'],
+            location=data.deviceInfo['location'],
+            failure_reason=data.failureReason
+        )
+        
+        # Update attempt counter
+        is_blocked, attempts_remaining = SeedkeyAttemptService.check_and_update_failed_attempts(db, customer_id, data.success)
+        logger.info(f"Logged client-side mnemonic attempt for customer {customer_id}. Success: {data.success}, Blocked: {is_blocked}, Attempts remaining: {attempts_remaining}")
+        
+        # Send SMS for failures
+        if not data.success:
+            logger.warning(f"Client-side mnemonic verification failed for customer {customer_id}: {data.failureReason}. Attempts remaining: {attempts_remaining}")
+            
+            try:
+                SMSService.send_seedkey_attempt_notification(
+                    db=db,
+                    customer_id=customer_id,
+                    attempts_remaining=attempts_remaining,
+                    device_info=data.deviceInfo['device_info'],
+                    is_final_attempt=is_blocked
+                )
+                logger.info(f"SMS notification sent for client-side failed mnemonic attempt for customer {customer_id}")
+            except Exception as sms_error:
+                logger.error(f"Failed to send mnemonic attempt SMS: {str(sms_error)}")
+        
+        # Handle lockout
+        if is_blocked:
+            lockout_info = SeedkeyAttemptService.get_seedkey_lockout_info(db, customer_id)
+            logger.warning(f"Client-side mnemonic verification locked for customer {customer_id}")
+            raise HTTPException(
+                status_code=423,
+                detail={
+                    "message": "Mnemonic verification locked for 24 hours after 3 failed attempts",
+                    "lockout_info": lockout_info
+                }
+            )
+        
+        lockout_info = SeedkeyAttemptService.get_seedkey_lockout_info(db, customer_id)
+        return {
+            "status": "success",
+            "is_blocked": is_blocked,
+            "failed_attempts": lockout_info["failed_attempts"],
+            "attempts_remaining": attempts_remaining,
+            "locked_until": lockout_info["locked_until"],
+            "lockout_duration_hours": SeedkeyAttemptService.LOCKOUT_DURATION_HOURS
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error logging client-side mnemonic attempt: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error logging mnemonic attempt: {str(e)}")
+

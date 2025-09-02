@@ -482,4 +482,32 @@ def update_login_metadata(db: Session, customer_id: str):
 
 
 
+def decrease_login_metadata(db: Session, customer_id: str):
+    """
+    Update login metadata for the customer on logout.
+    Decrease the number of logged in devices by 1 (minimum 0).
+    """
+    try:
+        query = text("""
+            UPDATE app_data 
+            SET no_of_logged_in_devices = GREATEST(COALESCE(no_of_logged_in_devices, 0) - 1, 0)
+            WHERE customer_id = :customer_id
+        """)
+        
+        result = db.execute(query, {"customer_id": customer_id})
+        db.commit()
+        
+        if result.rowcount > 0:
+            print(f"Successfully decreased login count for customer {customer_id}")
+            return True
+        else:
+            print(f"No customer found with ID {customer_id} during logout")
+            return False
+            
+    except Exception as e:
+        print(f"Error decreasing login metadata: {str(e)}")
+        db.rollback()
+        return False
+
+
 from app.services import challenge_service
