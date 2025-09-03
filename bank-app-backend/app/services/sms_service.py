@@ -35,7 +35,7 @@
             
 #             if success:
 #                 message = (
-#                     f"SECURITY ALERT: Successful login to your Bank App\n"
+#                     f"SECURITY ALERT: Successful login to your DhanRakshak App\n"
 #                     f"Time: {timestamp}\n"
 #                     f"Device: {device_info}\n"
 #                     f"Location: {location}\n"
@@ -44,7 +44,7 @@
 #                 )
 #             else:
 #                 base_message = (
-#                     f"SECURITY ALERT: Failed login attempt to your Bank App\n"
+#                     f"SECURITY ALERT: Failed login attempt to your DhanRakshak App\n"
 #                     f"Time: {timestamp}\n"
 #                     f"Device: {device_info}\n"
 #                     f"Location: {location}\n"
@@ -84,7 +84,7 @@
 #             timestamp = datetime.now().strftime("%d-%m-%Y %I:%M %p IST")
             
 #             message = (
-#                 f"SECURITY ALERT: Your Bank App account has been temporarily locked\n"
+#                 f"SECURITY ALERT: Your DhanRakshak App account has been temporarily locked\n"
 #                 f"Time: {timestamp}\n"
 #                 f"Device: {device_info}\n\n"
 #                 f"Reason: 5 consecutive failed login attempts\n\n"
@@ -167,7 +167,7 @@
 #             timestamp = datetime.now().strftime("%d-%m-%Y %I:%M %p IST")
             
 #             message = (
-#                 f"REGISTRATION ALERT: Bank App Successfully Registered\n"
+#                 f"REGISTRATION ALERT: DhanRakshak App Successfully Registered\n"
 #                 f"Time: {timestamp}\n"
 #                 f"Device: {device_info}\n"
 #                 f"Location: {location}\n"
@@ -202,7 +202,7 @@
 #             timestamp = datetime.now().strftime("%d-%m-%Y %I:%M %p IST")
             
 #             message = (
-#                 f"RESTORATION ALERT: Bank App Successfully Restored\n"
+#                 f"RESTORATION ALERT: DhanRakshak App Successfully Restored\n"
 #                 f"Time: {timestamp}\n"
 #                 f"Device: {device_info}\n"
 #                 f"Location: {location}\n"
@@ -287,7 +287,7 @@
 #             timestamp = datetime.now().strftime("%d-%m-%Y %I:%M %p IST")
             
 #             message = (
-#                 f"REVOCATION ALERT: Bank App Access Revoked\n"
+#                 f"REVOCATION ALERT: DhanRakshak App Access Revoked\n"
 #                 f"Time: {timestamp}\n"
 #                 f"Device: {device_info}\n"
 #                 f"Location: {location}\n\n"
@@ -730,7 +730,7 @@ class SMSService:
             
             if success:
                 message = (
-                    f"SECURITY ALERT: Successful login to your Bank App\n"
+                    f"SECURITY ALERT: Successful login to your DhanRakshak App\n"
                     f"Time: {timestamp}\n"
                     f"Device: {device_info}\n"
                     f"Location: {location}\n"
@@ -739,7 +739,7 @@ class SMSService:
                 )
             else:
                 base_message = (
-                    f"SECURITY ALERT: Failed login attempt to your Bank App\n"
+                    f"SECURITY ALERT: Failed login attempt to your DhanRakshak App\n"
                     f"Time: {timestamp}\n"
                     f"Device: {device_info}\n"
                     f"Location: {location}\n"
@@ -779,7 +779,7 @@ class SMSService:
             timestamp = datetime.now().strftime("%d-%m-%Y %I:%M %p IST")
             
             message = (
-                f"SECURITY ALERT: Your Bank App account has been temporarily locked\n"
+                f"SECURITY ALERT: Your DhanRakshak App account has been temporarily locked\n"
                 f"Time: {timestamp}\n"
                 f"Device: {device_info}\n\n"
                 f"Reason: 5 consecutive failed login attempts\n\n"
@@ -881,7 +881,7 @@ class SMSService:
             timestamp = datetime.now().strftime("%d-%m-%Y %I:%M %p IST")
             
             message = (
-                f"REGISTRATION ALERT: Bank App Successfully Registered\n"
+                f"REGISTRATION ALERT: DhanRakshak App Successfully Registered\n"
                 f"Time: {timestamp}\n"
                 f"Device: {device_info}\n"
                 f"Location: {location}\n"
@@ -916,7 +916,7 @@ class SMSService:
             timestamp = datetime.now().strftime("%d-%m-%Y %I:%M %p IST")
             
             message = (
-                f"RESTORATION ALERT: Bank App Successfully Restored\n"
+                f"RESTORATION ALERT: DhanRakshak App Successfully Restored\n"
                 f"Time: {timestamp}\n"
                 f"Device: {device_info}\n"
                 f"Location: {location}\n"
@@ -1011,7 +1011,7 @@ class SMSService:
             timestamp = datetime.now().strftime("%d-%m-%Y %I:%M %p IST")
             
             message = (
-                f"REVOCATION ALERT: Bank App Access Revoked\n"
+                f"REVOCATION ALERT: DhanRakshak App Access Revoked\n"
                 f"Time: {timestamp}\n"
                 f"Device: {device_info}\n"
                 f"Location: {location}\n\n"

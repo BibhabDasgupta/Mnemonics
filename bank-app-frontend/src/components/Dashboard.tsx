@@ -400,9 +400,9 @@
 //       <header className="bg-card/80 backdrop-blur-sm sticky top-0 z-50 shadow-card">
 //         <div className="flex items-center justify-between max-w-7xl mx-auto p-4">
 //           <div className="flex items-center space-x-3">
-//             <img src={bankLogo} alt="GlowBank" className="w-9 h-9" />
+//             <img src={bankLogo} alt="DhanRakshak" className="w-9 h-9" />
 //             <div>
-//               <h1 className="text-lg font-bold text-foreground">Bank</h1>
+//               <h1 className="text-lg font-bold text-foreground">DhanRakshak</h1>
 //               <p className="text-xs text-muted-foreground hidden sm:block">
 //                 Welcome back, {customerName || "User"}!
 //               </p>
@@ -1527,9 +1527,9 @@ const Dashboard = ({ onLogout, onInitiateTransaction }: DashboardProps) => {
       <header className="bg-card/80 backdrop-blur-sm sticky top-0 z-50 shadow-card">
         <div className="flex items-center justify-between max-w-7xl mx-auto p-4">
           <div className="flex items-center space-x-3">
-            <img src={bankLogo} alt="GlowBank" className="w-9 h-9" />
+            <img src={bankLogo} alt="DhanRakshak" className="w-9 h-9" />
             <div>
-              <h1 className="text-lg font-bold text-foreground">Bank</h1>
+              <h1 className="text-lg font-bold text-foreground">DhanRakshak</h1>
               <p className="text-xs text-muted-foreground hidden sm:block">
                 Welcome back, {customerName || "User"}!
               </p>

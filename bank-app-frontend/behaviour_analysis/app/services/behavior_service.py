@@ -23,7 +23,7 @@ class BehaviorService:
     
     # More lenient minimum acceptable values
     MIN_ACCEPTABLE_VALUES = {
-        'flight_avg': 0.001,      # 1ms minimum - very fast typists exist
+        'flight_avg': 0.15,      # 150ms minimum - very fast typists exist
         'traj_avg': 2.0,          # 2 pixels minimum - small precise movements
         'typing_speed': 0.05,     # 0.05 chars/min minimum - very slow typing ok
         'correction_rate': 0.0,   # Can be 0 (no corrections) - unchanged

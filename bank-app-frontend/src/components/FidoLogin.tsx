@@ -327,7 +327,7 @@
 //       <Card className="w-full max-w-md p-8 shadow-card animate-slide-up">
 //         <div className="text-center mb-8">
 //           <h1 className="text-3xl font-bold text-foreground mb-2">
-//             Welcome {customerName || 'User'}, Login to Bank App
+//             Welcome {customerName || 'User'}, Login to DhanRakshak
 //           </h1>
 //           <p className="text-muted-foreground">
 //             Authenticate using your biometric (fingerprint, face, or PIN).
@@ -888,7 +888,7 @@
 //       <Card className="w-full max-w-md p-8 shadow-card animate-slide-up">
 //         <div className="text-center mb-8">
 //           <h1 className="text-3xl font-bold text-foreground mb-2">
-//             Welcome {customerName || 'User'}, Login to Bank App
+//             Welcome {customerName || 'User'}, Login to DhanRakshak
 //           </h1>
 //           <p className="text-muted-foreground">
 //             Authenticate using your biometric (fingerprint, face, or PIN).
@@ -1521,7 +1521,7 @@ const FidoLogin = ({ onSuccess, customerName }: FidoLoginProps) => {
       <Card className="w-full max-w-md p-8 shadow-card animate-slide-up">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-foreground mb-2">
-            Welcome {customerName || 'User'}, Login to Bank App
+            Welcome {customerName || 'User'}, Login to DhanRakshak
           </h1>
           <p className="text-muted-foreground">
             Authenticate using your biometric (fingerprint, face, or PIN).

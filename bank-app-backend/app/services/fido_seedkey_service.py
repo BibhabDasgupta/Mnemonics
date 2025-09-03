@@ -63,7 +63,7 @@ def start_fido_registration(db: Session, customer_id: str):
     user_id_bytes = customer_id.encode('utf-8')
     registration_options = generate_registration_options(
         rp_id="localhost",
-        rp_name="Bank",
+        rp_name="DhanRakshak",
         user_id=user_id_bytes,
         user_name=result.email or customer_id,
         user_display_name=result.email or customer_id,

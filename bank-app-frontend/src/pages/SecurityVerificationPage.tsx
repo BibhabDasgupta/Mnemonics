@@ -136,9 +136,9 @@ const SecurityVerificationPage = () => {
       <header className="bg-white/80 backdrop-blur-sm border-b border-red-200">
         <div className="flex items-center justify-between max-w-4xl mx-auto p-4">
           <div className="flex items-center space-x-3">
-            <img src={bankLogo} alt="Bank" className="w-8 h-8" />
+            <img src={bankLogo} alt="DhanRakshak" className="w-8 h-8" />
             <div>
-              <h1 className="text-lg font-bold text-gray-900">Bank App Security</h1>
+              <h1 className="text-lg font-bold text-gray-900">DhanRakshak Security</h1>
               <p className="text-xs text-gray-600">
                 {isTransactionAlert ? 'Transaction Protection Active' : 'Account Protection Active'}
               </p>

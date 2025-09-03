@@ -1,5 +1,5 @@
 # --- File: app/api/api_v1/endpoints/restore.py ---
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.db.base import get_db
 from app.schemas.user import PhoneVerificationRequest, CustomerCreate, FidoLoginStartRequest, MnemonicAttemptRequest
