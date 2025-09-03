@@ -94,10 +94,12 @@ const BehavioralAnalyticsRouteWrapper = ({ children }: { children: ReactNode }) 
   
   // Check if current route is a restoration route
   const isRestorationRoute = location.pathname.startsWith('/restoration/');
+  const isRegistrationRoute = location.pathname.startsWith('/registration/');
   
-  console.log(`[Analytics Route Wrapper] Current path: ${location.pathname}, Is restoration route: ${isRestorationRoute}`);
+  console.log(`[Analytics Route Wrapper] Current path: ${location.pathname}, Is restoration route: ${isRestorationRoute}, Is registration route: ${isRegistrationRoute}`);
   
   if (isRestorationRoute) {
+    // Restoration routes: wrap with RestorationBehaviorProvider
     return (
       <BehavioralAnalytics.RestorationBehaviorProvider
         endpoint="http://localhost:3000/api/v1/analytics/behavior"
@@ -107,7 +109,11 @@ const BehavioralAnalyticsRouteWrapper = ({ children }: { children: ReactNode }) 
         {children}
       </BehavioralAnalytics.RestorationBehaviorProvider>
     );
+  } else if (isRegistrationRoute) {
+    // Registration routes: no behavioral analytics wrapping
+    return <>{children}</>;
   } else {
+    // Everything else (/landing, /login, /security-verification, /dashboard, /revoked, /already-registered): wrap with regular Provider
     return (
       <BehavioralAnalytics.Provider
         endpoint="http://localhost:3000/api/v1/analytics/behavior"
@@ -117,7 +123,7 @@ const BehavioralAnalyticsRouteWrapper = ({ children }: { children: ReactNode }) 
         {children}
       </BehavioralAnalytics.Provider>
     );
-  }
+  }    
 };
 
 const App = () => (
