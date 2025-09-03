@@ -23,7 +23,7 @@ const SplashScreen = ({ onComplete }: SplashScreenProps) => {
         <div className="text-center">
           <img 
             src={bankLogo} 
-            alt="Bank Logo" 
+            alt="DhanRakshak Logo" 
             className="w-32 h-32 mx-auto mb-4 opacity-0"
           />
         </div>
@@ -37,13 +37,13 @@ const SplashScreen = ({ onComplete }: SplashScreenProps) => {
         <div className="relative">
           <img 
             src={bankLogo} 
-            alt="Bank Logo" 
+            alt="DhanRakshak Logo" 
             className="w-32 h-32 mx-auto mb-4 animate-glow-pulse"
           />
           <div className="absolute inset-0 bg-gradient-glow rounded-full animate-glow-pulse opacity-50"></div>
         </div>
         <h1 className="text-2xl font-bold text-gray-800 opacity-80">
-          GlowBank
+          DhanRakshak
         </h1>
       </div>
     </div>

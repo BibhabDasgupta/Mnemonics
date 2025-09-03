@@ -15,8 +15,8 @@ export interface MockData {
 
 const MOCK_DATABASE: Record<string, MockData> = {
   "+919330377736": {
-    simData: { carrierName: "Jio", imsi: "405857123456789" },
-    phoneData: { deviceId: "DEVICE123", model: "Samsung Galaxy S21" },
+    simData: { carrierName: "Airtel", imsi: "405856987654321" },
+    phoneData: { deviceId: "DEVICE456", model: "iPhone 13" },
   },
   "+919239257752": {
     simData: { carrierName: "Airtel", imsi: "405856987654321" },
@@ -24,6 +24,10 @@ const MOCK_DATABASE: Record<string, MockData> = {
   },
   "+919068265551": {
     simData: { carrierName: "Airtel", imsi: "405856987654322" },
+    phoneData: { deviceId: "DEVICE456", model: "iPhone 13" },
+  },
+  "+918972167117": {
+    simData: { carrierName: "Airtel", imsi: "405856987654321" },
     phoneData: { deviceId: "DEVICE456", model: "iPhone 13" },
   },
 };

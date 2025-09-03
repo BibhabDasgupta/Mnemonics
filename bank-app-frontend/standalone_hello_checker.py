@@ -192,7 +192,7 @@ class BiometricChecker:
         if self.os_type == "Windows":
             return {
                 'available': self.winbio is not None,
-                'message': 'Windows Hello checker is available.' if self.winbio else 'Windows Hello API (winbio.dll) could not be loaded.',
+                'message': 'Windows Hello/TouchID checker is available.' if self.winbio else 'Windows Hello/TouchID API (winbio.dll) could not be loaded.',
                 'platform': self.os_type
             }
         elif self.os_type == "Darwin":

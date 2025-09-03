@@ -286,166 +286,348 @@ export const TransactionModal = ({ isOpen, onClose }: TransactionModalProps) => 
     }
   };
 
-  const handleTransaction = async () => {
-    setIsLoading(true);
-    setError("");
-    setCurrentStep("processing");
+  // const handleTransaction = async () => {
+  //   setIsLoading(true);
+  //   setError("");
+  //   setCurrentStep("processing");
 
-    if (!biometricHash) {
-      setError("Cannot proceed without a valid device security check.");
-      setIsLoading(false);
-      setCurrentStep("otp");
-      return;
+  //   if (!biometricHash) {
+  //     setError("Cannot proceed without a valid device security check.");
+  //     setIsLoading(false);
+  //     setCurrentStep("otp");
+  //     return;
+  //   }
+
+  //   if (!selectedAccount) {
+  //     setError("No account selected.");
+  //     setIsLoading(false);
+  //     setCurrentStep("otp");
+  //     return;
+  //   }
+
+  //   // Verify OTP first
+  //   const otpValid = await verifyOTP();
+  //   if (!otpValid) {
+  //     setIsLoading(false);
+  //     setCurrentStep("otp");
+  //     return;
+  //   }
+
+  //   try {
+  //     const terminalId = getOrSetTerminalId();
+  //     const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
+
+  //     if (!token) {
+  //       throw new Error("Authentication token not found. Please log in again.");
+  //     }
+
+  //     const parsedAmount = parseFloat(formData.amount);
+
+  //     console.log('🔒 [TransactionModal] Initiating transaction with payload:', {
+  //       recipient_account_number: formData.recipientAccount,
+  //       amount: parsedAmount,
+  //       terminal_id: terminalId,
+  //       biometric_hash: biometricHash,
+  //       account_number: selectedAccount.account_number,
+  //     });
+
+  //     const response = await fetch("http://localhost:8000/api/v1/transactions/create", {
+  //       method: "POST",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //         "Authorization": `Bearer ${token}`,
+  //       },
+  //       body: JSON.stringify({
+  //         recipient_account_number: formData.recipientAccount,
+  //         amount: parsedAmount,
+  //         terminal_id: terminalId,
+  //         biometric_hash: biometricHash,
+  //         account_number: selectedAccount.account_number,
+  //       }),
+  //     });
+
+  //     if (!response.ok) {
+  //       const errorData = await response.json();
+  //       throw new Error(errorData.detail || "Transaction failed.");
+  //     }
+
+  //     const result = await response.json();
+  //     console.log('🔒 [TransactionModal] Transaction response:', result);
+
+  //     if (result.fraud_prediction && result.blocked) {
+  //       console.log('🚨 [TransactionModal] Fraud detected - triggering security alert');
+  //       const transactionData: TransactionData = {
+  //         recipient_account_number: formData.recipientAccount,
+  //         amount: parsedAmount,
+  //         terminal_id: terminalId,
+  //         biometric_hash: biometricHash,
+  //       };
+  //       const securityAlert = SecurityService.createTransactionAlert(result.fraud_details);
+  //       triggerTransactionAlert(securityAlert, transactionData);
+  //       handleClose();
+  //       toast({
+  //         title: "Transaction Blocked",
+  //         description: "Suspicious activity detected. You will be redirected to security verification.",
+  //         variant: "destructive",
+  //       });
+  //       return;
+  //     }
+
+  //     if (result.status === "Transaction successful") {
+  //       // Fetch updated account details
+  //       const accountResponse = await fetch(`http://localhost:8000/api/v1/account/${selectedAccount.account_number}`, {
+  //         method: "GET",
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //           "Authorization": `Bearer ${token}`,
+  //         },
+  //       });
+
+  //       if (!accountResponse.ok) {
+  //         throw new Error("Failed to fetch updated account details.");
+  //       }
+
+  //       const updatedAccount = await accountResponse.json();
+  //       console.log('🔒 [TransactionModal] Updated account details:', updatedAccount);
+
+  //       // Verify the transaction type - transactions are ordered by date desc, so latest is at index 0
+  //       const latestTransaction = updatedAccount.transactions && updatedAccount.transactions.length > 0 
+  //         ? updatedAccount.transactions[0] // Most recent transaction is at index 0
+  //         : null;
+        
+  //       if (!latestTransaction) {
+  //         console.error('No transactions found after transaction completion');
+  //         throw new Error('Transaction may not have been recorded properly.');
+  //       }
+
+  //       console.log('🔒 [TransactionModal] Latest transaction:', latestTransaction);
+        
+  //       // Verify it's a debit transaction (money going out)
+  //       if (latestTransaction.type !== 'debit') {
+  //         console.error('Unexpected transaction type:', latestTransaction);
+  //         throw new Error('Transaction recorded incorrectly. Expected a debit transaction.');
+  //       }
+
+  //       // Update the selected account in context
+  //       setSelectedAccount(updatedAccount);
+  //       handleClose();
+        
+  //       let successMessage = `₹${parsedAmount.toFixed(2)} transferred successfully to ${formData.recipientName}`;
+  //       if (locationValidation?.is_suspicious) {
+  //         successMessage += " Location verification was completed.";
+  //       }
+  //       toast({
+  //         title: "Transaction Successful",
+  //         description: successMessage,
+  //         variant: "default",
+  //       });
+
+  //       if (result.fraud_probability && result.fraud_probability > 0.3) {
+  //         toast({
+  //           title: "Security Notice",
+  //           description: `Transaction completed but flagged for review (${(result.fraud_probability * 100).toFixed(1)}% risk score)`,
+  //           variant: "destructive",
+  //         });
+  //       }
+  //     } else {
+  //       throw new Error(result.message || 'Transaction failed');
+  //     }
+  //   } catch (err: any) {
+  //     console.error('❌ [TransactionModal] Transaction error:', err);
+  //     const errorMessage = err.message || "An unexpected error occurred.";
+  //     setError(errorMessage);
+  //     setCurrentStep("otp");
+  //     toast({
+  //       title: "Transaction Failed",
+  //       description: errorMessage,
+  //       variant: "destructive",
+  //     });
+  //   } finally {
+  //     setIsLoading(false);
+  //   }
+  // };
+
+
+  // Updated handleTransaction function with recipient_name included
+const handleTransaction = async () => {
+  setIsLoading(true);
+  setError("");
+  setCurrentStep("processing");
+
+  if (!biometricHash) {
+    setError("Cannot proceed without a valid device security check.");
+    setIsLoading(false);
+    setCurrentStep("otp");
+    return;
+  }
+
+  if (!selectedAccount) {
+    setError("No account selected.");
+    setIsLoading(false);
+    setCurrentStep("otp");
+    return;
+  }
+
+  // Verify OTP first
+  const otpValid = await verifyOTP();
+  if (!otpValid) {
+    setIsLoading(false);
+    setCurrentStep("otp");
+    return;
+  }
+
+  try {
+    const terminalId = getOrSetTerminalId();
+    const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
+
+    if (!token) {
+      throw new Error("Authentication token not found. Please log in again.");
     }
 
-    if (!selectedAccount) {
-      setError("No account selected.");
-      setIsLoading(false);
-      setCurrentStep("otp");
-      return;
-    }
+    const parsedAmount = parseFloat(formData.amount);
 
-    // Verify OTP first
-    const otpValid = await verifyOTP();
-    if (!otpValid) {
-      setIsLoading(false);
-      setCurrentStep("otp");
-      return;
-    }
+    console.log('🔒 [TransactionModal] Initiating transaction with payload:', {
+      recipient_account_number: formData.recipientAccount,
+      recipient_name: formData.recipientName, // ADDED: Include recipient name for SMS
+      amount: parsedAmount,
+      terminal_id: terminalId,
+      biometric_hash: biometricHash,
+      account_number: selectedAccount.account_number,
+    });
 
-    try {
-      const terminalId = getOrSetTerminalId();
-      const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
-
-      if (!token) {
-        throw new Error("Authentication token not found. Please log in again.");
-      }
-
-      const parsedAmount = parseFloat(formData.amount);
-
-      console.log('🔒 [TransactionModal] Initiating transaction with payload:', {
+    const response = await fetch("http://localhost:8000/api/v1/transactions/create", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
         recipient_account_number: formData.recipientAccount,
+        recipient_name: formData.recipientName, // ADDED: This will ensure proper SMS content
         amount: parsedAmount,
         terminal_id: terminalId,
         biometric_hash: biometricHash,
         account_number: selectedAccount.account_number,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || "Transaction failed.");
+    }
+
+    const result = await response.json();
+    console.log('🔒 [TransactionModal] Transaction response:', result);
+
+    if (result.fraud_prediction && result.blocked) {
+      console.log('🚨 [TransactionModal] Fraud detected - triggering security alert');
+      const transactionData: TransactionData = {
+        recipient_account_number: formData.recipientAccount,
+        amount: parsedAmount,
+        terminal_id: terminalId,
+        biometric_hash: biometricHash,
+      };
+      const securityAlert = SecurityService.createTransactionAlert(result.fraud_details);
+      triggerTransactionAlert(securityAlert, transactionData);
+      handleClose();
+      toast({
+        title: "Transaction Blocked",
+        description: "Suspicious activity detected. You will be redirected to security verification.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (result.status === "Transaction successful") {
+      // Show success message immediately
+      toast({
+        title: "Transaction Successful",
+        description: `₹${parsedAmount.toFixed(2)} transferred successfully to ${formData.recipientName}. SMS confirmation sent.`,
+        variant: "default",
       });
 
-      const response = await fetch("http://localhost:8000/api/v1/transactions/create", {
-        method: "POST",
+      // Fetch updated account details
+      const accountResponse = await fetch(`http://localhost:8000/api/v1/account/${selectedAccount.account_number}`, {
+        method: "GET",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          recipient_account_number: formData.recipientAccount,
-          amount: parsedAmount,
-          terminal_id: terminalId,
-          biometric_hash: biometricHash,
-          account_number: selectedAccount.account_number,
-        }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || "Transaction failed.");
+      if (!accountResponse.ok) {
+        throw new Error("Failed to fetch updated account details.");
       }
 
-      const result = await response.json();
-      console.log('🔒 [TransactionModal] Transaction response:', result);
+      const updatedAccount = await accountResponse.json();
+      console.log('🔒 [TransactionModal] Updated account details:', updatedAccount);
 
-      if (result.fraud_prediction && result.blocked) {
-        console.log('🚨 [TransactionModal] Fraud detected - triggering security alert');
-        const transactionData: TransactionData = {
-          recipient_account_number: formData.recipientAccount,
-          amount: parsedAmount,
-          terminal_id: terminalId,
-          biometric_hash: biometricHash,
-        };
-        const securityAlert = SecurityService.createTransactionAlert(result.fraud_details);
-        triggerTransactionAlert(securityAlert, transactionData);
-        handleClose();
+      // Verify the transaction type
+      const latestTransaction = updatedAccount.transactions && updatedAccount.transactions.length > 0 
+        ? updatedAccount.transactions[0] 
+        : null;
+      
+      if (!latestTransaction) {
+        console.error('No transactions found after transaction completion');
+        throw new Error('Transaction may not have been recorded properly.');
+      }
+
+      console.log('🔒 [TransactionModal] Latest transaction:', latestTransaction);
+      
+      if (latestTransaction.type !== 'debit') {
+        console.error('Unexpected transaction type:', latestTransaction);
+        throw new Error('Transaction recorded incorrectly. Expected a debit transaction.');
+      }
+
+      // Update the selected account in context
+      setSelectedAccount(updatedAccount);
+      handleClose();
+      
+      // Additional success notifications
+      if (result.fraud_probability && result.fraud_probability > 0.3) {
         toast({
-          title: "Transaction Blocked",
-          description: "Suspicious activity detected. You will be redirected to security verification.",
+          title: "Security Notice",
+          description: `Transaction completed but flagged for review (${(result.fraud_probability * 100).toFixed(1)}% risk score)`,
           variant: "destructive",
         });
-        return;
       }
 
-      if (result.status === "Transaction successful") {
-        // Fetch updated account details
-        const accountResponse = await fetch(`http://localhost:8000/api/v1/account/${selectedAccount.account_number}`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`,
-          },
-        });
-
-        if (!accountResponse.ok) {
-          throw new Error("Failed to fetch updated account details.");
-        }
-
-        const updatedAccount = await accountResponse.json();
-        console.log('🔒 [TransactionModal] Updated account details:', updatedAccount);
-
-        // Verify the transaction type - transactions are ordered by date desc, so latest is at index 0
-        const latestTransaction = updatedAccount.transactions && updatedAccount.transactions.length > 0 
-          ? updatedAccount.transactions[0] // Most recent transaction is at index 0
-          : null;
-        
-        if (!latestTransaction) {
-          console.error('No transactions found after transaction completion');
-          throw new Error('Transaction may not have been recorded properly.');
-        }
-
-        console.log('🔒 [TransactionModal] Latest transaction:', latestTransaction);
-        
-        // Verify it's a debit transaction (money going out)
-        if (latestTransaction.type !== 'debit') {
-          console.error('Unexpected transaction type:', latestTransaction);
-          throw new Error('Transaction recorded incorrectly. Expected a debit transaction.');
-        }
-
-        // Update the selected account in context
-        setSelectedAccount(updatedAccount);
-        handleClose();
-        
-        let successMessage = `₹${parsedAmount.toFixed(2)} transferred successfully to ${formData.recipientName}`;
-        if (locationValidation?.is_suspicious) {
-          successMessage += " Location verification was completed.";
-        }
+      if (locationValidation?.is_suspicious) {
         toast({
-          title: "Transaction Successful",
-          description: successMessage,
+          title: "Location Verification",
+          description: "Transaction completed with location verification.",
           variant: "default",
         });
-
-        if (result.fraud_probability && result.fraud_probability > 0.3) {
-          toast({
-            title: "Security Notice",
-            description: `Transaction completed but flagged for review (${(result.fraud_probability * 100).toFixed(1)}% risk score)`,
-            variant: "destructive",
-          });
-        }
-      } else {
-        throw new Error(result.message || 'Transaction failed');
       }
-    } catch (err: any) {
-      console.error('❌ [TransactionModal] Transaction error:', err);
-      const errorMessage = err.message || "An unexpected error occurred.";
-      setError(errorMessage);
-      setCurrentStep("otp");
-      toast({
-        title: "Transaction Failed",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
+
+      if (result.transaction_id) {
+        console.log(`📱 SMS sent for transaction ID: ${result.transaction_id}`);
+        // You can add a small toast here to confirm SMS was sent
+        setTimeout(() => {
+          toast({
+            title: "SMS Confirmation",
+            description: "Transaction confirmation SMS sent to your registered mobile number.",
+            variant: "default",
+          });
+        }, 2000);
+      }
+    } else {
+      throw new Error(result.message || 'Transaction failed');
     }
-  };
+  } catch (err: any) {
+    console.error('❌ [TransactionModal] Transaction error:', err);
+    const errorMessage = err.message || "An unexpected error occurred.";
+    setError(errorMessage);
+    setCurrentStep("otp");
+    toast({
+      title: "Transaction Failed",
+      description: errorMessage,
+      variant: "destructive",
+    });
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const handleStepBack = () => {
     setError("");

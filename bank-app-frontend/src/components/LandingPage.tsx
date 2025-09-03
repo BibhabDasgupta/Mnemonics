@@ -13,11 +13,11 @@ const LandingPage = ({ onNavigation }: LandingPageProps) => {
         <div className="text-center mb-8">
           <img 
             src={bankLogo} 
-            alt="GlowBank Logo" 
+            alt="DhanRakshak Logo" 
             className="w-20 h-20 mx-auto mb-4"
           />
           <h1 className="text-3xl font-bold text-foreground mb-2">
-            Welcome to the Bank App
+            Welcome to the DhanRakshak
           </h1>
           <p className="text-muted-foreground">
             Your trusted digital banking partner
